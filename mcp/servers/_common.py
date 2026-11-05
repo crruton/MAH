@@ -67,7 +67,7 @@ class Leases:
 
     def _save(self, s: dict) -> None:
         self.file.parent.mkdir(parents=True, exist_ok=True)
-        self.file.write_text(json.dumps(s, indent=2), encoding="utf-8")
+        self.file.write_text(json.dumps(s, indent=2), encoding="utf-8", newline="\n")
 
     @staticmethod
     def _reclaim(s: dict) -> None:

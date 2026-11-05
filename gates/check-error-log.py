@@ -9,6 +9,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import collect  # noqa: E402
+
 REQUIRED = {"Барьер": "Barrier", "Уровень": "Level", "Репро-тест": "Repro"}
 LEVELS = {"текст", "хук", "сервер", "ос", "text", "hook", "server", "os"}
 
@@ -26,7 +29,7 @@ def main() -> int:
         print(f"check-error-log: no {path}, skipped")
         return 0
     text = path.read_text(encoding="utf-8")
-    sections = re.split(r"^##\s+", text, flags=re.M)[1:]
+    sections = re.split(r"^##[ \t]+", text, flags=re.M)[1:]
     problems = []
     for sec in sections:
         title = sec.splitlines()[0].strip()
@@ -44,6 +47,7 @@ def main() -> int:
         if level and level not in LEVELS:
             problems.append(f"{title}: unknown level '{level}' (use: текст | хук | сервер | ОС)")
     if problems:
+        collect.record("gate", "B16", "check-error-log", "failed", " | ".join(problems[:3]))
         print("FAIL: error log:", *problems, sep="\n  ", file=sys.stderr)
         return 1
     print(f"check-error-log: {len(sections)} incidents OK")

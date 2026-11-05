@@ -10,7 +10,17 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import collect  # noqa: E402
+
 TEXT_LIMIT = 2_000_000
+GATE_BARRIER = {
+    "check-secrets": "B07", "check-forbidden-files": "B08", "check-large-files": "B09",
+    "check-conflict-markers": "B10", "check-test-weakening": "B11", "check-changelog": "B12",
+    "check-adr-numbers": "B13", "check-adr-fields": "B14", "check-adr-links": "B15",
+    "check-error-log": "B16", "check-rules-size": "B17", "check-ste": "B18",
+    "check-zones": "B19", "check-harness-integrity": "B20",
+}
 
 
 def git(*args: str) -> str:
@@ -19,6 +29,8 @@ def git(*args: str) -> str:
 
 
 def _range() -> list:
+    if os.environ.get("HARNESS_ALL") == "1":
+        return []
     base = os.environ.get("HARNESS_BASE", "").strip()
     if base and git("rev-parse", "--verify", base):
         return [f"{base}...HEAD"]
@@ -63,8 +75,9 @@ def read_text(path: str) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def report(gate: str, problems: list, ok_note: str = "") -> int:
+def report(gate: str, problems: list, ok_note: str = "", barrier: str = "") -> int:
     if problems:
+        collect.record("gate", barrier or GATE_BARRIER.get(gate, ""), gate, "failed", " | ".join(problems[:3]))
         print(f"FAIL {gate}:", file=sys.stderr)
         for p in problems:
             print(f"  {p}", file=sys.stderr)

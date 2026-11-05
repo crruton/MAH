@@ -60,7 +60,7 @@ def apply_patch(path: str, new_doc: dict) -> dict:
     errors = _validate(p, new_doc)
     if errors:
         return {"status": "refused", "errors": errors}
-    p.write_text(json.dumps(new_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    p.write_text(json.dumps(new_doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
     return {"status": "written", "path": rel(p)}
 
 

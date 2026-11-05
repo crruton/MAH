@@ -1,8 +1,8 @@
 # self-harness
 
-Процесс, в котором ИИ-агенты работают над проектом и сами держат границы его дрейфа. Здесь всё, чтобы взять этот процесс, развернуть у себя одной командой и попробовать: **15 скиллов, 10 MCP-серверов, 20 барьеров, 14 гейтов для CI**, лаунчер и метрики.
+Процесс, в котором ИИ-агенты работают над проектом и сами держат границы его дрейфа. Здесь всё, чтобы взять этот процесс, развернуть у себя одной командой и попробовать: **27 барьеров, сборщик и статистика ошибок, 15 скиллов, 10 MCP-серверов, 16 гейтов для CI**, профили с замером цены, лаунчер и метрики.
 
-*A process kit for AI coding agents (Claude Code, OpenCode): 15 skills, 10 MCP servers, 20 barriers with red-team demos, 14 CI gates, ADR memory, an error log that turns incidents into rules, harness review methods, convergence metrics. Agent-facing text follows ASD-STE100 to cut tokens. One-button launcher. Docs are in Russian. MIT.*
+*A process kit for AI coding agents (Claude Code, OpenCode): 27 barriers with red-team demos, an error collector with statistics, 15 skills, 10 MCP servers, 16 CI gates, core/full profiles with a cost budget, ADR memory, an error log that turns incidents into rules, harness review methods, convergence metrics. Agent-facing text follows ASD-STE100 to cut tokens. One-button launcher. Docs are in Russian. MIT.*
 
 > Харнес — это то, что мы забрали у агента: не просьба в промпте, а исполняемый запрет в среде. Каждое забранное право — один пойманный инцидент.
 
@@ -14,18 +14,20 @@
 2. [Что делает «Старт»](#что-делает-старт)
 3. [Команды лаунчера](#команды-лаунчера)
 4. [Процесс за 6 шагов](#процесс-за-6-шагов)
-5. [15 скиллов](#15-скиллов)
-6. [10 MCP-серверов](#10-mcp-серверов)
-7. [20 барьеров](#20-барьеров)
-8. [Гейты и CI](#гейты-и-ci)
-9. [Тексты для агентов по ASD-STE100](#тексты-для-агентов-по-asd-ste100)
-10. [Зоны и права агента](#зоны-и-права-агента)
-11. [Журнал ошибок, ADR, ревью харнеса](#журнал-ошибок-adr-ревью-харнеса)
-12. [Метрики и нагрузка](#метрики-и-нагрузка)
-13. [Внедрение: день, неделя, месяц](#внедрение-день-неделя-месяц)
-14. [Что внутри](#что-внутри)
-15. [Частые проблемы](#частые-проблемы)
-16. [Откуда это и что получилось](#откуда-это-и-что-получилось)
+5. [Сборщик и статистика ошибок](#сборщик-и-статистика-ошибок)
+6. [Профили и цена харнеса](#профили-и-цена-харнеса)
+7. [27 барьеров](#27-барьеров)
+8. [15 скиллов](#15-скиллов)
+9. [10 MCP-серверов](#10-mcp-серверов)
+10. [Гейты и CI](#гейты-и-ci)
+11. [Тексты для агентов по ASD-STE100](#тексты-для-агентов-по-asd-ste100)
+12. [Зоны и права агента](#зоны-и-права-агента)
+13. [Журнал ошибок, ADR, ревью харнеса](#журнал-ошибок-adr-ревью-харнеса)
+14. [Метрики и нагрузка](#метрики-и-нагрузка)
+15. [Внедрение: день, неделя, месяц](#внедрение-день-неделя-месяц)
+16. [Что внутри](#что-внутри)
+17. [Частые проблемы](#частые-проблемы)
+18. [Откуда это и что получилось](#откуда-это-и-что-получилось)
 
 ---
 
@@ -46,14 +48,18 @@ git clone https://github.com/crruton/self-harness.git
 harness.cmd start C:\work\my-project      # Windows
 ```
 
-**Только посмотреть:** `./harness.sh demo` — 20 атак на 20 барьеров на временном репозитории. Каждая должна быть заблокирована:
+**Только посмотреть:** `./harness.sh demo` — 27 атак на 27 барьеров на временном репозитории. Каждая должна быть заблокирована:
 
 ```
   [v] B01 pre-push: main                 blocked: Blocked by pre-push: push to refs/heads/main...
-  [v] B05 hook guard-destructive         blocked: Blocked by guard-destructive: this command can destroy work...
-  [v] B18 gate check-ste                 blocked: FAIL check-ste (ASD-STE100 Issue 9)...
+  [v] B05 hook guard-destructive         blocked: Blocked by guard-destructive: "git reset --hard" can destroy work...
+  [v] B22 portability: bash              blocked: FAIL check-portability B22...
   ...
-Blocked: 20, missed: 0
+Blocked: 27, missed: 0
+
+== Error store after the attacks
+| B05 | guard-destructive | 1 | ████ | 2026-11-06 |
+  ...
 ```
 
 ### Требования
@@ -62,7 +68,7 @@ Blocked: 20, missed: 0
 |---|---|---|
 | git, bash | всё | да |
 | Python 3.10+ | гейты, метрики, MCP | да |
-| jq | хуки Claude Code (B04–B06) | для Claude Code |
+| jq | хуки Claude Code (B04–B06, сборщик ошибок инструментов) | для Claude Code |
 | `pip install -r .harness/mcp/requirements.txt` | MCP-серверы | для MCP |
 | Docker | нагрузочный тест | нет |
 
@@ -75,7 +81,7 @@ Blocked: 20, missed: 0
 `./harness.sh start <repo>` — шаг 1 процесса, базовая линия:
 
 1. Проверяет окружение.
-2. Ставит харнес: правила, зоны, 3 хука агента, 2 git-хука, 14 гейтов, 15 скиллов, 10 MCP-серверов. Существующие файлы не трогает.
+2. Ставит харнес по профилю (`core` по умолчанию): правила, зоны, 2 хука агента, 2 git-хука, 16 гейтов, сборщик ошибок, скиллы и MCP-серверы по выбору. Существующие файлы не трогает.
 3. Включает git-хуки (`core.hooksPath = .githooks`) и пишет `harness.lock` — отпечаток харнеса.
 4. Прогоняет все гейты.
 5. Делает нулевой замер метрик в `docs/metrics.md`.
@@ -88,19 +94,22 @@ AGENTS.md, CLAUDE.md                правила проекта для аге�
 error.md                            журнал ошибок агента
 CHANGELOG.md
 harness.lock                        отпечаток хуков, гейтов и настроек (B20)
-.mcp.json                           10 MCP-серверов для Claude Code
+.mcp.json                           MCP-серверы (--mcp или full)
 opencode.json                       зоны для OpenCode
 .claude/settings.json               зоны и хуки для Claude Code
-.claude/hooks/                      guard-tests, guard-destructive, guard-secrets
-.claude/skills/                     15 скиллов
+.claude/hooks/                      guard.sh (B04–B06), collect-tool-errors.sh
+.harness/errors/                    хранилище ошибок (коммитится)
+.harness/config                     профиль: какие гейты выключены
+.claude/skills/                     5 скиллов (core) или 15 (full)
 .githooks/                          pre-push, commit-msg
 .github/pull_request_template.md    поля ADR в MR/PR
 .harness/mcp/                       код 10 MCP-серверов
 docs/adr/                           каталог и шаблон ADR
 docs/harness/                       методы ревью правок харнеса и арбитраж
 docs/metrics.md                     метрики сходимости
-gates/                              14 гейтов для CI
-metrics/convergence.py
+gates/                              16 гейтов, сборщик collect.py
+metrics/convergence.py, errors.py
+docs/errors.md                      статистика ошибок
 ```
 
 Проверьте `git status` и закоммитьте: харнес живёт в репозитории и меняется через MR, как код.
@@ -112,14 +121,16 @@ metrics/convergence.py
 | Команда | Что делает | Шаг |
 |---|---|---|
 | `./harness.sh` | меню | — |
-| `start <repo>` | базовая линия целиком (одна кнопка) | 1 |
+| `start <repo> [--profile core\|full] [--mcp a,b]` | базовая линия целиком (одна кнопка) | 1 |
 | `doctor` | проверка окружения | 1 |
 | `install <repo>` | только установка файлов | 1 |
-| `demo [Bnn]` | атаки на все 20 барьеров или на один | — |
-| `barriers` | список 20 барьеров | — |
+| `demo [Bnn]` | атаки на все 27 барьеров или на один | — |
+| `barriers` | список 27 барьеров | — |
+| `errors <repo> [--suggest]` | статистика ошибок в `docs/errors.md` | 5 |
+| `budget <repo>` | цена харнеса: токены в сессии и задержка хуков | 5 |
 | `incident <repo> "что случилось"` | запись в `error.md` со следующим номером INC | 2 |
 | `adr <repo> "решение"` | ADR со следующим номером и строка в каталоге | 3 |
-| `check <repo>` | все 14 гейтов | 4 |
+| `check <repo>` | все гейты профиля | 4 |
 | `lock <repo>` | принять проверенное изменение харнеса | 4 |
 | `metrics <repo>` | метрики сходимости в `docs/metrics.md` | 5 |
 | `loadtest <url> [rps]` | k6 со ступенями до `rps` в Docker | 5 |
@@ -140,6 +151,127 @@ metrics/convergence.py
 | 4 | Пайплайн проверок | Хуки и гейты на каждом шаге, ревью правок харнеса | `check`, `lock` | Нарушение блокирует среда, а не договорённость |
 | 5 | Замеры | Метрики сходимости раз в неделю, нагрузка на стенде | `metrics`, `loadtest` | Правила на плато, доля исправлений падает |
 | 6 | Фиксация | Окружения, права, ветки dev/main записаны | — | Новый человек разворачивает процесс сам |
+
+---
+
+## Сборщик и статистика ошибок
+
+Без статистики харнес — набор правил «на всякий случай». Со статистикой видно, какой барьер реально работает, какую ошибку агент повторяет и окупает ли харнес свою цену.
+
+### Хранилище
+
+`.harness/errors/events-ГГГГ-ММ-<автор>.jsonl` — одна строка JSON на событие. Файл на автора и месяц: файлы сливаются в git без конфликтов, и команда получает общую статистику. **Коммитьте папку.**
+
+```json
+{"v":1,"ts":"2026-11-05T21:41:45Z","source":"hook","barrier":"B05","name":"guard-destructive","outcome":"blocked",
+ "actor":"agent","runtime":"claude-code","branch":"dev","commit":"a1b2c3d","session":"…","detail":"sh -c 'git reset --hard HEAD~1'"}
+```
+
+Секреты и персональные данные в `detail` маскируются до записи (ключи, токены, JWT, пароли, email, телефоны). Сборщик никогда не роняет хук или гейт: его собственная ошибка игнорируется. Отключить: `HARNESS_ERRORS=0`.
+
+### Кто пишет
+
+| Источник | Что попадает | Когда |
+|---|---|---|
+| `hook` | B04–B06: заблокированная команда агента | `guard.sh`, PreToolUse |
+| `tool` | упавший вызов инструмента агента: команда и ошибка | `collect-tool-errors.sh`, PostToolUse |
+| `git-hook` | B01–B03: push в main, force-push, плохое сообщение коммита | `pre-push`, `commit-msg` |
+| `gate` | B07–B27: упавший гейт, первые три нарушения | `gates/run-all.sh` локально и в CI |
+| `manual` | инцидент из `error.md` | `./harness.sh incident` |
+
+`actor` = `agent`, если событие пришло из хука агента или из сессии Claude Code / OpenCode (переменные `CLAUDECODE`, `OPENCODE`), иначе `human`.
+
+### Статистика
+
+```bash
+./harness.sh errors <repo>             # отчёт в консоль и в docs/errors.md
+./harness.sh errors <repo> --suggest   # готовые команды incident для повторяющихся ошибок
+python metrics/errors.py --json        # для дашбордов
+```
+
+Что в отчёте:
+
+| Раздел | Что показывает | Что делать |
+|---|---|---|
+| Сводка | событий, заблокировано, доля агента, ошибок инструментов, открытых инцидентов, Enforcement Ratio | Enforcement Ratio должен расти: инциденты закрываются хуком/сервером/ОС, а не текстом |
+| Барьеры | сколько раз сработал каждый барьер и когда последний раз | каждое срабатывание — ошибка, которая не дошла до кода; барьер, который не срабатывает месяцами, — кандидат на удаление |
+| По неделям | события по источникам | рост `tool` — агент чаще ошибается; рост `hook` — чаще упирается в запреты |
+| Повторы за 7 дней | один барьер и одна ошибка 3+ раз | барьер держит, но агента туда ведёт инструкция или скилл: исправьте источник, `--suggest` даст команду |
+| Инциденты | по уровню барьера, классу, статусу | много `text` — правила не проверяются машиной |
+
+Пример — статистика ошибок, которые агент сделал при сборке этого репозитория: [docs/errors.md](docs/errors.md), исходник — [error.md](error.md).
+
+---
+
+## Профили и цена харнеса
+
+Харнес не бесплатный: правила, описания скиллов и инструменты MCP лежат в контексте каждой сессии, хуки добавляют задержку к каждому вызову инструмента. Поэтому по умолчанию ставится минимум, а остальное — по выбору.
+
+```bash
+./harness.sh start <repo>                                   # core
+./harness.sh start <repo> --profile full                    # всё
+./harness.sh start <repo> --mcp test-env-broker,safe-edit   # core + два MCP-сервера
+./harness.sh budget <repo>                                  # сколько это стоит
+```
+
+| | core (по умолчанию) | full |
+|---|---|---|
+| Барьеры | 27 | 27 |
+| Сборщик ошибок | да | да |
+| Скиллы | 5 процессных | 15 |
+| MCP-серверы | нет (добавляются `--mcp`) | 10 |
+| Гейты | 14 из 16 (без changelog и large-files) | 16 |
+| **Токенов в каждой сессии** | **~420** | **~3 000** |
+| **Задержка на вызов инструмента** | **~130 мс** | **~130 мс** |
+
+Замер `./harness.sh budget` на Windows 11 (Git Bash), токены — tiktoken o200k как оценка. Из 3 000 токенов профиля full 2 300 — описания 29 инструментов MCP: подключайте только те серверы, ресурсы которых реально есть в проекте.
+
+**Улучшит ли харнес работу агента?** Только если его цена меньше, чем стоят ошибки, которые он ловит. Поэтому:
+- ставьте `core`, а модули добавляйте, когда статистика показала проблему;
+- раз в неделю сравнивайте `budget` и `errors`: барьер, который за месяц не сработал ни разу, а стоит токенов или миллисекунд, — кандидат на удаление;
+- правку харнеса проверяйте по [методам ревью](review/harness-review.md): прогон с правкой и без, на одних и тех же задачах.
+
+Первая версия хуков стоила **~2,5 секунды на каждый вызов** (три хука, `grep` на каждый шаблон, четыре вызова `jq`). Это нашёл `budget`. После объединения в один `guard.sh` — ~130 мс.
+
+---
+
+## 27 барьеров
+
+Барьер — то, что физически не даёт агенту сделать ошибку. Чем глубже уровень, тем надёжнее: **ОС > сервер > хук > гейт > текст**. Каждый барьер появился после реального инцидента. `./harness.sh demo` атакует все 27; `./harness.sh demo B07` — один; MCP `redteam-runner` делает то же из агента.
+
+| ID | Барьер | Уровень | Где | Что ловит |
+|---|---|---|---|---|
+| B01 | `pre-push` | git-хук | машина разработчика | push в `main` |
+| B02 | `pre-push` | git-хук | машина разработчика | force-push и удаление ветки |
+| B03 | `commit-msg` | git-хук | машина разработчика | «wip», «fix», слишком короткие и длинные заголовки |
+| B04 | `guard.sh` | хук агента | Claude Code | полный прогон тестов на каждую правку |
+| B05 | `guard.sh` | хук агента | Claude Code | `git reset --hard`, `rm -rf`, `DROP TABLE` — в том числе внутри `sh -c`, `python -c` |
+| B06 | `guard.sh` | хук агента | Claude Code | чтение `.env`, ключей, `secrets/` — и через Read, и через `cat` |
+| B07 | `check-secrets` | гейт | CI | ключи AWS, GitHub, GitLab, Slack, JWT, приватные ключи, пароли в коде |
+| B08 | `check-forbidden-files` | гейт | CI | `.env`, `*.pem`, `id_rsa` в git |
+| B09 | `check-large-files` | гейт | CI | файл больше 1 МБ |
+| B10 | `check-conflict-markers` | гейт | CI | забытые `<<<<<<<` |
+| B11 | `check-test-weakening` | гейт | CI | добавлен `skip`/`.only`, удалены assert |
+| B12 | `check-changelog` | гейт | CI | код изменён, CHANGELOG — нет |
+| B13 | `check-adr-numbers` | гейт | CI | два ADR с одним номером |
+| B14 | `check-adr-fields` | гейт | CI | ADR без `Status`, `Applies To`, `Reconsider When` |
+| B15 | `check-adr-links` | гейт | CI | ссылка на несуществующий ADR |
+| B16 | `check-error-log` | гейт | CI | инцидент закрыт без барьера и репро-теста |
+| B17 | `check-rules-size` | гейт | CI | AGENTS.md длиннее 150 строк |
+| B18 | `check-ste` | гейт | CI | правило для агента нарушает ASD-STE100 |
+| B19 | `check-zones` | гейт | CI | из настроек убран запрет Red Zone или хук |
+| B20 | `check-harness-integrity` | гейт | CI | хук, гейт или настройка изменены без ревью |
+| B21 | `check-portability` | гейт | CI | `re.M` + `\s`: пустое поле читает следующую строку |
+| B22 | `check-portability` | гейт | CI | `subprocess.run(["bash", …])`: на Windows стартует WSL, а не Git Bash |
+| B23 | `check-portability` | гейт | CI | `communicate()` с JSON-RPC: stdin закрывается раньше ответа сервера |
+| B24 | `check-portability` | гейт | CI | зависимость `pkg>=1` без верхней границы: следующая мажорная версия ломает импорт |
+| B25 | `check-portability` | гейт | CI | текстовый ввод-вывод без `encoding=`: кириллица ломается в cp1251 |
+| B26 | `check-portability` | гейт | CI | shell-скрипт с CRLF, нет `*.sh eol=lf` в `.gitattributes` |
+| B27 | `check-portability` | гейт | CI | скрипт в git без бита исполнения (100644) |
+
+**B21–B27 — ошибки, которые делал агент, собиравший этот репозиторий**, раз за разом при переходе между Linux и Windows. Каждая записана в [error.md](error.md) с причиной и репро-тестом; ошибка B21 повторилась дважды, потому что первое исправление не стало барьером. Python-код гейт разбирает через `ast`, а не регулярными выражениями.
+
+Хуки на машине обходятся (`--no-verify`, другой рантайм), поэтому каждый важный запрет продублирован глубже: защита ветки на сервере, гейт в CI, права файловой системы.
 
 ---
 
@@ -189,46 +321,15 @@ metrics/convergence.py
 | `schema-store` | правку JSON, ломающую схему | dialog-scenario-store |
 | `readonly-view` | любую запись в ядро | rtp-core-readonly |
 | `slot-scheduler` | GPU, слот LLM, лицензию без аренды | gpu-scheduler |
-| `redteam-runner` | ничего — атакует 20 барьеров | adversarial-runner |
+| `redteam-runner` | ничего — атакует 27 барьеров | adversarial-runner |
 
 `python mcp/selftest.py` поднимает каждый сервер по протоколу MCP (stdio, `initialize`, `tools/list`) и проверяет поведение инструментов.
 
 ---
 
-## 20 барьеров
-
-Барьер — то, что физически не даёт агенту сделать ошибку. Чем глубже уровень, тем надёжнее: **ОС > сервер > хук > гейт > текст**. Каждый барьер появился после реального инцидента. `./harness.sh demo` атакует все 20; `./harness.sh demo B07` — один; MCP `redteam-runner` делает то же из агента.
-
-| ID | Барьер | Уровень | Где | Что ловит |
-|---|---|---|---|---|
-| B01 | `pre-push` | git-хук | машина разработчика | push в `main` |
-| B02 | `pre-push` | git-хук | машина разработчика | force-push и удаление ветки |
-| B03 | `commit-msg` | git-хук | машина разработчика | «wip», «fix», слишком короткие и длинные заголовки |
-| B04 | `guard-tests.sh` | хук агента | Claude Code | полный прогон тестов на каждую правку |
-| B05 | `guard-destructive.sh` | хук агента | Claude Code | `git reset --hard`, `rm -rf`, `DROP TABLE` — в том числе внутри `sh -c`, `python -c` |
-| B06 | `guard-secrets.sh` | хук агента | Claude Code | чтение `.env`, ключей, `secrets/` — и через Read, и через `cat` |
-| B07 | `check-secrets` | гейт | CI | ключи AWS, GitHub, GitLab, Slack, JWT, приватные ключи, пароли в коде |
-| B08 | `check-forbidden-files` | гейт | CI | `.env`, `*.pem`, `id_rsa` в git |
-| B09 | `check-large-files` | гейт | CI | файл больше 1 МБ |
-| B10 | `check-conflict-markers` | гейт | CI | забытые `<<<<<<<` |
-| B11 | `check-test-weakening` | гейт | CI | добавлен `skip`/`.only`, удалены assert |
-| B12 | `check-changelog` | гейт | CI | код изменён, CHANGELOG — нет |
-| B13 | `check-adr-numbers` | гейт | CI | два ADR с одним номером |
-| B14 | `check-adr-fields` | гейт | CI | ADR без `Status`, `Applies To`, `Reconsider When` |
-| B15 | `check-adr-links` | гейт | CI | ссылка на несуществующий ADR |
-| B16 | `check-error-log` | гейт | CI | инцидент закрыт без барьера и репро-теста |
-| B17 | `check-rules-size` | гейт | CI | AGENTS.md длиннее 150 строк |
-| B18 | `check-ste` | гейт | CI | правило для агента нарушает ASD-STE100 |
-| B19 | `check-zones` | гейт | CI | из настроек убран запрет Red Zone или хук |
-| B20 | `check-harness-integrity` | гейт | CI | хук, гейт или настройка изменены без ревью |
-
-Хуки на машине обходятся (`--no-verify`, другой рантайм), поэтому каждый важный запрет продублирован глубже: защита ветки на сервере, гейт в CI, права файловой системы.
-
----
-
 ## Гейты и CI
 
-14 гейтов (B07–B20) запускает `bash gates/run-all.sh` или `./harness.sh check <repo>`. Все гейты — без внешних зависимостей, только Python и git.
+16 гейтов (B07–B27) запускает `bash gates/run-all.sh` или `./harness.sh check <repo>`. Все гейты — без внешних зависимостей, только Python и git.
 
 ### Что проверяют
 
@@ -256,6 +357,7 @@ metrics/convergence.py
 | `check-ste` | `AGENTS.md`, `CLAUDE.md`, скиллы, `rules/` | правила ASD-STE100: 5.1, 6.3, 6.6, 4.2, 8.1, 1.1 (+ предупреждения 5.2, 3.6) | переписать по [docs/STE.md](docs/STE.md) |
 | `check-zones` | `.claude/settings.json`, `opencode.json` | на месте deny для `.env`, `git reset --hard`, `rm -rf`, force-push; зарегистрированы три хука агента | вернуть запреты |
 | `check-harness-integrity` | `.githooks/`, `.claude/hooks/`, `.claude/settings.json`, `opencode.json`, `gates/` | sha256 совпадает с `harness.lock` | провести ревью изменения, затем `./harness.sh lock` |
+| `check-portability` | изменённые `.py`, `requirements*.txt`, `pyproject.toml`, скрипты | B21–B27: `re.M`+`\s`, голый `bash` в subprocess, `communicate()` с JSON-RPC, зависимость без верхней границы, текст без `encoding=`, CRLF, нет бита исполнения | исправить по подсказке в сообщении; весь репозиторий: `HARNESS_ALL=1` |
 
 ### Настройка
 
@@ -265,6 +367,8 @@ metrics/convergence.py
 | `HARNESS_SKIP` | — | пропустить гейты: `"check-changelog check-ste"`. Только с апрувом человека и причиной в MR |
 | `HARNESS_MAX_FILE_KB` | 1024 | порог `check-large-files` |
 | `HARNESS_ADR_DIR` | `docs/adr` | каталог ADR |
+| `HARNESS_ALL` | — | `1`: проверять все файлы, а не только изменение |
+| `HARNESS_ERRORS` | — | `0`: выключить сборщик ошибок |
 
 ### Подключение к CI
 
@@ -284,7 +388,7 @@ GitHub Actions — [`ci/github-actions.yml`](ci/github-actions.yml), GitLab CI �
 
 ### CI этого репозитория
 
-[`.github/workflows/harness.yml`](.github/workflows/harness.yml): 20 атак должны быть заблокированы; скиллы и шаблоны проходят `check-ste --strict`; 10 MCP-серверов проходят self-test на `mcp<2` и `mcp>=2`; лаунчер проходит `start → incident → adr → check`.
+[`.github/workflows/harness.yml`](.github/workflows/harness.yml): 27 атак должны быть заблокированы; репозиторий сам проходит `check-portability` на всех файлах и `check-error-log` на своём `error.md`; скиллы и шаблоны проходят `check-ste --strict`; 10 MCP-серверов проходят self-test на `mcp<2` и `mcp>=2`; лаунчер проходит `start → incident → adr → check → errors → budget`.
 
 ---
 
@@ -361,15 +465,15 @@ GitHub Actions — [`ci/github-actions.yml`](ci/github-actions.yml), GitLab CI �
 |---|---|
 | `harness.sh`, `harness.cmd` | лаунчер |
 | `PROCESS.md` | процесс: 6 шагов |
-| `install.sh`, `try-it.sh` | установка; демо и red-team 20 барьеров |
+| `install.sh`, `try-it.sh` | установка по профилю; демо и red-team 27 барьеров |
 | `skills/` | 15 скиллов |
 | `mcp/` | 10 MCP-серверов, self-test, конфиг |
-| `hooks/` | 3 хука агента, 2 git-хука |
-| `gates/` | 14 гейтов, словарь STE |
+| `hooks/` | `guard.sh` (B04–B06), сборщик ошибок инструментов, 2 git-хука |
+| `gates/` | 16 гейтов, сборщик `collect.py`, словарь STE |
 | `zones/` | настройки Claude Code и OpenCode |
 | `templates/` | AGENTS.md, ADR, `error.md`, MR, CHANGELOG |
 | `review/` | ревью правок харнеса, арбитраж |
-| `metrics/` | метрики сходимости, подсчёт токенов |
+| `metrics/` | метрики сходимости, статистика ошибок, цена харнеса, подсчёт токенов |
 | `loadtest/` | шаблон k6 |
 | `ci/` | подключение гейтов в GitHub Actions и GitLab CI |
 | `docs/STE.md` | правила ASD-STE100 для текстов агентов |

@@ -40,7 +40,7 @@ def apply_edit(path: str, new_content: str, reason: str) -> dict:
     if not reason.strip():
         return {"status": "refused", "path": r, "reason": "give a reason"}
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(new_content, encoding="utf-8")
+    p.write_text(new_content, encoding="utf-8", newline="")  # keep the bytes of the agent: no CRLF on Windows
     log = ROOT / ".harness" / "state" / "safe-edit.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as fh:

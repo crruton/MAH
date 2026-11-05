@@ -28,6 +28,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+import collect  # noqa: E402
+
 HERE = Path(__file__).parent
 PROC_MAX, DESC_MAX, PARA_MAX = 20, 25, 6
 DEFAULT = ["AGENTS.md", "CLAUDE.md", ".claude/skills/**/SKILL.md", "rules/*.md"]
@@ -140,6 +143,7 @@ def main() -> int:
     for w in warns:
         print(f"  warn {w}")
     if errors or (strict and warns):
+        collect.record("gate", "B18", "check-ste", "failed", " | ".join((errors or warns)[:3]))
         print("FAIL check-ste (ASD-STE100 Issue 9):", *errors, sep="\n  ", file=sys.stderr)
         return 1
     print(f"check-ste: OK — {len(set(files))} files, {len(warns)} warnings")

@@ -13,7 +13,7 @@ import re
 from _common import ROOT, git, server
 
 DIRS = [d for d in os.environ.get("SPEC_DIRS", "openspec/specs,docs/specs,docs/adr").split(",") if d]
-LINK = re.compile(r"^(Spec|ADR):\s*\S+", re.M | re.I)
+LINK = re.compile(r"^(Spec|ADR):[ \t]*\S+", re.M | re.I)
 mcp = server("spec-registry")
 
 
