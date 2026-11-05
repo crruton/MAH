@@ -1,0 +1,21 @@
+name: harness
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Five barriers must block
+        run: bash try-it.sh
+      - name: Python syntax
+        run: python -m py_compile gates/check-error-log.py metrics/convergence.py mcp/test_env_broker.py
+      - name: Shell syntax
+        run: for f in install.sh try-it.sh gates/*.sh hooks/guard-tests.sh hooks/pre-push; do bash -n "$f"; done

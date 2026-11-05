@@ -1,0 +1,4 @@
+.test_env_broker_state.json
+__pycache__/
+loadtest/results/
+.claude/settings.local.json

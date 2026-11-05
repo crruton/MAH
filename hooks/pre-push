@@ -1,0 +1,12 @@
+#!/bin/sh
+# Blocks pushes to main/master. Work goes to dev; main changes only through a merge request.
+# Install: git config core.hooksPath .githooks
+while read local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/heads/main|refs/heads/master)
+            echo "ERROR: push to $remote_ref is blocked. Push to dev and open a merge request dev -> main." >&2
+            exit 1
+            ;;
+    esac
+done
+exit 0
