@@ -15,7 +15,18 @@ jobs:
           python-version: "3.12"
       - name: Five barriers must block
         run: bash try-it.sh
+      - name: Launcher end to end
+        run: |
+          repo=$(mktemp -d)
+          git -C "$repo" init -q -b dev
+          git -C "$repo" -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m init
+          ./harness.sh start "$repo"
+          ./harness.sh incident "$repo" "ci incident"
+          ./harness.sh adr "$repo" "CI decision"
+          ./harness.sh check "$repo"
+          test -f "$repo/docs/metrics.md"
+          test -f "$repo/docs/adr/0001-ci-decision.md"
       - name: Python syntax
         run: python -m py_compile gates/check-error-log.py metrics/convergence.py mcp/test_env_broker.py
       - name: Shell syntax
-        run: for f in install.sh try-it.sh gates/*.sh hooks/guard-tests.sh hooks/pre-push; do bash -n "$f"; done
+        run: for f in harness.sh install.sh try-it.sh gates/*.sh hooks/guard-tests.sh hooks/pre-push; do bash -n "$f"; done
