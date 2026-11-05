@@ -1,6 +1,6 @@
-# Каталог ADR
+# ADR index
 
-Агент читает этот файл перед планом: сопоставляет свои пути с колонкой `Applies To` и читает каждый принятый ADR целиком. Номер нового ADR — следующий свободный, его проверяет `gates/check-adr-numbers.sh`.
+Read this file before you plan. Compare your paths with `Applies To`. Read each accepted ADR that applies. Get the number of a new ADR from `./harness.sh adr`. The gate `gates/check-adr-numbers.sh` checks the numbers.
 
-| ID | Решение | Статус | Applies To |
+| ID | Decision | Status | Applies To |
 |---|---|---|---|

@@ -6,27 +6,64 @@ on:
   pull_request:
 
 jobs:
-  demo:
+  barriers:
+    name: 20 barriers block their attacks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Five barriers must block
-        run: bash try-it.sh
-      - name: Launcher end to end
+      - run: sudo apt-get install -y jq
+      - run: bash try-it.sh
+
+  ste:
+    name: agent-facing text follows ASD-STE100
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python gates/check-ste.py --strict "skills/**/SKILL.md" templates/AGENTS.global.md templates/AGENTS.project.md templates/error.md templates/adr/index.md
+
+  mcp:
+    name: 10 MCP servers (mcp ${{ matrix.sdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: ["<2", ">=2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y jq
+      - run: pip install "mcp${{ matrix.sdk }}" jsonschema
+      - run: python mcp/selftest.py
+
+  launcher:
+    name: launcher end to end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y jq
+      - name: start, incident, adr, lock, check
         run: |
           repo=$(mktemp -d)
           git -C "$repo" init -q -b dev
-          git -C "$repo" -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m init
+          git -C "$repo" -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m "Start the repository"
           ./harness.sh start "$repo"
           ./harness.sh incident "$repo" "ci incident"
           ./harness.sh adr "$repo" "CI decision"
+          adr="$repo/docs/adr/0001-ci-decision.md"
+          sed -i 's#^- \*\*Applies To:\*\*.*#- **Applies To:** `src/**`#; s#^- \*\*Reconsider When:\*\*.*#- **Reconsider When:** RPS above 100#' "$adr"
           ./harness.sh check "$repo"
           test -f "$repo/docs/metrics.md"
-          test -f "$repo/docs/adr/0001-ci-decision.md"
-      - name: Python syntax
-        run: python -m py_compile gates/check-error-log.py metrics/convergence.py mcp/test_env_broker.py
-      - name: Shell syntax
-        run: for f in harness.sh install.sh try-it.sh gates/*.sh hooks/guard-tests.sh hooks/pre-push; do bash -n "$f"; done
+      - name: syntax
+        run: |
+          for f in harness.sh install.sh try-it.sh gates/*.sh hooks/*.sh hooks/pre-push hooks/commit-msg; do bash -n "$f"; done
+          python -m py_compile gates/*.py metrics/*.py mcp/selftest.py mcp/servers/*.py

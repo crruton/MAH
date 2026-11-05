@@ -1,12 +1,21 @@
 #!/bin/sh
-# Blocks pushes to main/master. Work goes to dev; main changes only through a merge request.
+# B01 + B02. Block a push to main/master, a force push (non-fast-forward) and a branch deletion.
+# Work goes to dev; main changes only through a merge request.
 # Install: git config core.hooksPath .githooks
+zero=0000000000000000000000000000000000000000
 while read local_ref local_sha remote_ref remote_sha; do
     case "$remote_ref" in
         refs/heads/main|refs/heads/master)
-            echo "ERROR: push to $remote_ref is blocked. Push to dev and open a merge request dev -> main." >&2
-            exit 1
-            ;;
+            echo "Blocked by pre-push: push to $remote_ref. Push to dev and open a merge request dev -> main." >&2
+            exit 1 ;;
     esac
+    if [ "$local_sha" = "$zero" ]; then
+        echo "Blocked by pre-push: deletion of $remote_ref. Ask a human." >&2
+        exit 1
+    fi
+    if [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        echo "Blocked by pre-push: force push to $remote_ref rewrites history. Ask a human." >&2
+        exit 1
+    fi
 done
 exit 0

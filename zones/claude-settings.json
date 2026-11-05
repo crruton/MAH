@@ -8,6 +8,7 @@
       "Read(./**/*.key)",
       "Edit(./.env)",
       "Edit(./.env.*)",
+      "Edit(./harness.lock)",
       "Bash(git reset --hard*)",
       "Bash(git clean*)",
       "Bash(git checkout -- *)",
@@ -21,6 +22,8 @@
       "Bash(docker compose up*)",
       "Bash(curl *)",
       "Edit(./.claude/**)",
+      "Edit(./.githooks/**)",
+      "Edit(./gates/**)",
       "Edit(./opencode.json)"
     ]
   },
@@ -29,7 +32,14 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-tests.sh" }
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-tests.sh" },
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-destructive.sh" }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Bash",
+        "hooks": [
+          { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-secrets.sh" }
         ]
       }
     ]

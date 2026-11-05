@@ -1,37 +1,44 @@
-# Глобальный слой правил для агентов
+# Global agent rules
 
-Корпоративный слой: культура, безопасность, git, ADR. Источник — один файл в git, правки через MR. Копии: `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`. Проектный слой (`AGENTS.md` в репозитории) побеждает глобальный; конфликт — показать человеку.
+This file is the company layer: culture, security, git and ADR rules. Keep the source in one git repository. Change it only through a merge request. Copy it to `~/.claude/CLAUDE.md` and `~/.config/opencode/AGENTS.md`. The project file `AGENTS.md` wins over this file. Tell the human about each conflict.
 
-## Порядок работы
-1. Контекст: прочитать AGENTS.md проекта, `docs/adr/index.md`, спеку и код, который трогаешь.
-2. Уточнить: 2–3 вопроса, если неясны границы или критерии приёмки.
-3. План: для изменений в нескольких файлах — короткий план со ссылками на ADR или «нет релевантных ADR».
-4. Выполнение: малые шаги с явным входом и выходом.
-5. Проверка: тесты по диффу, линтер, сборка. Не смог проверить — так и скажи.
-6. Коммит: атомарный, в повелительном наклонении; запись в CHANGELOG; обновить документ, если изменился контракт.
+## Task loop
+1. Read the project `AGENTS.md`, `docs/adr/index.md`, the spec and the code that you change.
+2. When the scope or the acceptance criteria are not clear, ask 2 or 3 questions.
+3. For a change in more than one file, write a short plan. Give the ADR IDs or write "no applicable ADRs".
+4. Do the work in small steps.
+5. Run the tests for the changed files, the linter and the build.
+6. When you cannot run a check, tell the human.
+7. Make one commit for one change. Write the subject in the imperative form.
+8. Add an entry to `CHANGELOG.md`. Update the document of each changed contract.
 
-## ADR — обязательно
-- Перед планом сверить свои пути с `Applies To` принятых ADR и прочитать их.
-- Изменение, противоречащее принятому ADR, — стоп до нового ADR с одобрением человека.
-- Сработал `Reconsider When` — предложить новый ADR с `Supersedes`, а не менять молча.
-- Историю не переписывать: старый ADR помечается `SUPERSEDED by ADR-XXXX`.
-- Номер нового ADR берётся из гейта, а не из памяти.
+## ADR
+- Before you plan, compare your paths with `Applies To` of the accepted ADRs.
+- Read each accepted ADR that applies.
+- When your change conflicts with an accepted ADR, stop. A human must approve a new ADR first.
+- When a `Reconsider When` trigger occurred, propose a new ADR with `Supersedes`.
+- Do not change old ADRs. Mark them `SUPERSEDED by ADR-NNNN`.
+- Get the number of a new ADR from `./harness.sh adr`, not from memory.
 
 ## Git
-- Работа только в `dev` (или в короткой ветке, влитой в `dev`). `main` — продакшен, только через MR.
-- Не коммитить секреты и `.env`. Не править сгенерированные и вендорные файлы руками.
-- Без явного разрешения человека не выполнять: `git reset --hard`, `git clean -f`, `git checkout -- .`, force-push, удаление веток и данных.
+- Work in `dev`. The `main` branch is production. Change `main` only through a merge request.
+- Do not commit secrets or `.env` files.
+- Do not change generated files or vendored files.
+- Do not run `git reset --hard`, `git clean -f`, `git checkout -- .` or a force push. Ask the human.
 
-## Безопасность
-- Секреты только в переменных окружения и менеджерах секретов. В репозитории — `.env.example` с заглушками.
-- Файлы секретов (`.env`, `*.key`, `*.pem`, `secrets/**`) — только чтение человеком, агенту запрещены.
-- Персональные данные не логировать и не передавать в промпт сверх необходимого.
+## Security
+- Keep secrets in environment variables or in a secret store.
+- Put placeholders in `.env.example`.
+- Do not read or change `.env`, keys, certificates or files in `secrets/`.
+- Do not write personal data to logs or prompts.
 
-## Ошибки
-- Ошибка агента → запись в `error.md` в течение 24 ч → барьер как можно глубже → репро-тест.
-- Две одинаковые поправки за неделю → правило в контекстный файл.
+## Errors
+- After an agent error, add an entry to `error.md` in 24 hours.
+- Make a barrier at the deepest level. The order is OS > server > hook > text.
+- Write a repro test for the barrier.
+- When the human corrects the same thing two times in a week, add a rule to the context file.
 
-## Запрещено
-- Угадывать архитектуру, команды и флаги библиотек, которые не прочитал.
-- Выдавать непроверенную работу за готовую.
-- Ослаблять проверки ради зелёного CI: пропускать тесты, глушить исключения, увеличивать таймауты.
+## Do not
+- Do not guess the architecture, the commands or the library flags.
+- Do not say that you finished the work when a check failed or did not run.
+- Do not make checks weaker to get a green build. Do not skip tests. Do not increase timeouts.

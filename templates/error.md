@@ -1,16 +1,16 @@
-# Журнал ошибок агента
+# Agent error log
 
-Одна запись — один инцидент. Запись делается в течение 24 часов. Закрыть запись (`Статус: закрыт`) можно только с заполненными полями «Барьер», «Уровень» и «Репро-тест» — это проверяет `gates/check-error-log.py`. Логи — ссылкой и выжимкой, без секретов и персональных данных.
+One entry is one incident. Add the entry in 24 hours. You can set `Status: closed` only when `Barrier`, `Level` and `Repro` have values. The gate `gates/check-error-log.py` checks this. Give logs as a link and a short summary. Do not put secrets or personal data here.
 
-## INC-2026-08-10-01: git reset --hard стёр незакоммиченную работу
-- Дата: 2026-08-10
-- Агент/роль: backend-dev
-- Где: <репозиторий>, задача <ID>
-- Симптом: потеряны незакоммиченные изменения .gitignore и constitution.md
-- Корень: запрещена запись файлов, но терминал оставлен открытым
-- Класс: обход запрета
-- Барьер: deny `git reset*` в настройках CLI + корень репозитория read-only для контейнера агента
-- Уровень: ОС
-- Репро-тест: `sh -c 'git reset --hard'` в контейнере агента падает с «Read-only file system»
-- ADR: —
-- Статус: закрыт
+## INC-2026-08-10-01: git reset --hard deleted uncommitted work
+- Date: 2026-08-10
+- Agent: backend-dev
+- Where: `<repository>`, task `<ID>`
+- Symptom: uncommitted changes to .gitignore and constitution.md were lost
+- Cause: the settings denied file writes, but the terminal stayed open
+- Class: bypass of a rule
+- Barrier: deny `git reset*` in the CLI settings, read-only repository root for the agent container
+- Level: OS
+- Repro: `sh -c 'git reset --hard'` in the agent container fails with "Read-only file system"
+- ADR: -
+- Status: closed

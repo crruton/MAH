@@ -4,13 +4,15 @@
 #   ./harness.sh                     interactive menu
 #   ./harness.sh start  <repo>       one button: doctor -> install -> check -> metrics -> next steps
 #   ./harness.sh doctor              check prerequisites
-#   ./harness.sh demo                five barriers on a throwaway repo
+#   ./harness.sh demo [Bnn]          20 barriers (or one) attacked on a throwaway repo
+#   ./harness.sh barriers            list the 20 barriers
 #   ./harness.sh install  <repo>     copy templates, hooks, gates into a repo (never overwrites)
 #   ./harness.sh check    <repo>     run all gates
 #   ./harness.sh metrics  <repo>     weekly convergence metrics -> <repo>/docs/metrics.md
 #   ./harness.sh incident <repo> "title"   new error.md entry with the next INC id
 #   ./harness.sh adr      <repo> "title"   new ADR with the next free number
 #   ./harness.sh loadtest <url> [rps]      k6 ramp to <rps> (default 100) in Docker
+#   ./harness.sh lock     <repo>     accept a reviewed harness change (write harness.lock)
 set -uo pipefail
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,7 +56,18 @@ cmd_doctor() {
   return $rc
 }
 
-cmd_demo() { head_ "Демо: пять барьеров"; bash "$KIT/try-it.sh"; }
+cmd_demo() {
+  head_ "Демо: атаки на барьеры"
+  if [ -n "${1:-}" ]; then bash "$KIT/try-it.sh" --only "$1"; else bash "$KIT/try-it.sh"; fi
+}
+
+cmd_barriers() { head_ "20 барьеров"; bash "$KIT/try-it.sh" --list | awk -F'\t' '{printf "  %-4s %-32s %s\n", $1, $2, $3}'; }
+
+cmd_lock() {
+  local repo; repo="$(need_repo "${1:-}")" || return 1
+  head_ "Принять изменение харнеса: $repo"
+  (cd "$repo" && "$PY" gates/checks.py lock) && ok "harness.lock обновлён — закоммитьте его вместе с изменением"
+}
 
 cmd_install() {
   local repo; repo="$(need_repo "${1:-}")" || return 1
@@ -96,17 +109,17 @@ cmd_incident() {
   cat >> "$log" <<EOF
 
 ## $id: $title
-- Дата: $day
-- Агент/роль:
-- Где:
-- Симптом:
-- Корень:
-- Класс:
-- Барьер:
-- Уровень: текст | хук | сервер | ОС
-- Репро-тест:
-- ADR: —
-- Статус: открыт
+- Date: $day
+- Agent:
+- Where:
+- Symptom:
+- Cause:
+- Class:
+- Barrier:
+- Level: text | hook | server | OS
+- Repro:
+- ADR: -
+- Status: open
 EOF
   ok "$id добавлен в error.md — заполните барьер и репро-тест в течение 24 часов"
 }
@@ -121,10 +134,10 @@ cmd_adr() {
   next=$(printf '%04d' $((10#${last:-0} + 1)))
   file="$dir/$next-$(slug "$title").md"
   [ "$(slug "$title")" ] || file="$dir/$next.md"
-  sed -e "s/ADR-NNNN: <решение одной фразой>/ADR-$next: $title/" -e "s/YYYY-MM-DD/$(date +%F)/" -e "s/PROPOSED | APPROVED | LOCKED | SUPERSEDED by ADR-XXXX/PROPOSED/" \
+  sed -e "s/ADR-NNNN: <decision in one sentence>/ADR-$next: $title/" -e "s/YYYY-MM-DD/$(date +%F)/" -e "s/PROPOSED | APPROVED | LOCKED | SUPERSEDED by ADR-XXXX/PROPOSED/" \
     "$KIT/templates/adr/ADR-0000.md" > "$file"
   [ -f "$dir/index.md" ] || cp "$KIT/templates/adr/index.md" "$dir/index.md"
-  printf '| %s | %s | PROPOSED | `<пути>` |\n' "$next" "$title" >> "$dir/index.md"
+  printf '| %s | %s | PROPOSED | `<paths>` |\n' "$next" "$title" >> "$dir/index.md"
   ok "создан $(basename "$file") и строка в docs/adr/index.md — заполните Applies To и Reconsider When"
 }
 
@@ -166,19 +179,21 @@ menu() {
     printf 'Репозиторий: %s\n\n' "${repo:-не выбран}"
     cat <<'M'
   1) Старт: базовая линия в репозитории (одна кнопка)
-  2) Демо: пять барьеров на временном репозитории
+  2) Демо: 20 атак на барьеры на временном репозитории
   3) Проверить окружение
   4) Проверить гейты
   5) Метрики сходимости
   6) Записать ошибку агента (error.md)
   7) Новый ADR
   8) Нагрузочный тест (k6)
+  l) Принять изменение харнеса (harness.lock)
+  b) Список 20 барьеров
   9) Выбрать репозиторий
   0) Выход
 M
     read -r -p "> " c || return 0
     case "$c" in
-      1|4|5|6|7) [ -n "$repo" ] || { read -r -p "Путь к репозиторию: " repo; } ;;
+      1|4|5|6|7|l) [ -n "$repo" ] || { read -r -p "Путь к репозиторию: " repo; } ;;
     esac
     case "$c" in
       1) cmd_start "$repo" ;;
@@ -189,6 +204,8 @@ M
       6) cmd_incident "$repo" ;;
       7) cmd_adr "$repo" ;;
       8) cmd_loadtest ;;
+      l) cmd_lock "$repo" ;;
+      b) cmd_barriers ;;
       9) read -r -p "Путь к репозиторию: " repo ;;
       0|q|Q) return 0 ;;
       *) warn "нет такого пункта" ;;
@@ -198,7 +215,7 @@ M
 
 case "${1:-menu}" in
   menu) menu ;;
-  start|doctor|demo|install|check|metrics|incident|adr|loadtest) c="$1"; shift; "cmd_$c" "$@" ;;
-  -h|--help|help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
-  *) err "неизвестная команда: $1"; sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  start|doctor|demo|barriers|install|check|metrics|incident|adr|loadtest|lock) c="$1"; shift; "cmd_$c" "$@" ;;
+  -h|--help|help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0" ;;
+  *) err "неизвестная команда: $1"; awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 2 ;;
 esac
