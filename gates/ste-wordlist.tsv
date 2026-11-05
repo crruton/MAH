@@ -1,0 +1,39 @@
+# Words that are not approved in ASD-STE100 Issue 9 (Part 2, dictionary), with the approved alternative.
+# A subset: words that appear often in prompts and agent rules. Full dictionary: https://www.asd-ste100.org
+# Format: not-approved<TAB>approved alternative<TAB>part of speech in the dictionary
+accomplish	do	v
+acquire	get	v
+additional	more	adj
+adequate	sufficient	adj
+advise	tell	v
+appropriate	applicable	adj
+assist	help	v
+attempt	try	v
+commence	start	v
+determine	find	v
+eliminate	remove	v
+employ	use	v
+ensure	make sure	v
+evaluate	examine	v
+execute	do	v
+facilitate	help	v
+identical	same	adj
+implement	do	v
+inform	tell	v
+initiate	start	v
+locate	find	v
+maintain	keep	v
+modify	change	v
+obtain	get	v
+perform	do	v
+permit	let	v
+principal	primary	adj
+proceed	continue	v
+provide	give	v
+remain	stay	v
+retain	keep	v
+terminate	stop	v
+therefore	thus	adv
+utilize	use	v
+verify	make sure	v
+whether	if	conj

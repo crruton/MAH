@@ -2,9 +2,13 @@
 harness-gates:
   stage: test
   image: python:3.12-alpine
+  variables:
+    GIT_DEPTH: 0                  # the diff-based gates need the target branch
   before_script:
     - apk add --no-cache bash git
   script:
+    - export HARNESS_BASE="origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
+    - git fetch -q origin "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-main}"
     - bash gates/run-all.sh
   rules:
     - if: '$CI_COMMIT_BRANCH == "dev"'

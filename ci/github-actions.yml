@@ -11,8 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # the diff-based gates need the target branch
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Harness gates (ADR numbers, error.md, AGENTS.md size)
+      - name: 14 harness gates
         run: bash gates/run-all.sh
+        env:
+          HARNESS_BASE: origin/${{ github.base_ref || 'main' }}

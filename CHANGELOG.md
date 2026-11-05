@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-11-05
+
+### Added
+- 15 skills in `skills/`: 10 from the solo stage (generalized from the SIP platform) and 5 process skills. Installed to `.claude/skills/`.
+- 10 MCP servers in `mcp/servers/`, with `mcp/selftest.py` (stdio protocol and behavior). Work with mcp 1.x and 2.x.
+- 20 barriers with one attack each: `try-it.sh`, `./harness.sh demo [Bnn]`, MCP `redteam-runner`.
+- New hooks: `guard-destructive.sh`, `guard-secrets.sh`, `commit-msg`. `pre-push` also blocks force push and branch deletion.
+- New gates: check-secrets, check-forbidden-files, check-large-files, check-conflict-markers, check-test-weakening, check-changelog, check-adr-fields, check-adr-links, check-ste, check-zones, check-harness-integrity. Total: 14.
+- `harness.lock` and `./harness.sh lock`: a harness change needs review.
+- `docs/STE.md`, `gates/check-ste.py`, `gates/ste-wordlist.tsv`: agent text follows ASD-STE100 Issue 9.
+- `metrics/token_count.py`.
+
+### Changed
+- Agent-facing templates are in Simplified Technical English.
+- `error.md` fields are in English: Barrier, Level, Repro, Status.
+- README: skills, MCP, 20 barriers, detailed gates and CI.
+
 ## [0.2.0] — 2026-11-05
 
 ### Added

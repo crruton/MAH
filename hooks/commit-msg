@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# B03. Commit message: 10-72 characters in the subject, no placeholder words, no period at the end.
+# An optional prefix like [NO JIRA] or [ABC-123] is not counted.
+subject=$(grep -v '^#' "$1" | head -1)
+body=$(printf '%s' "$subject" | sed -E 's/^\[[^]]+\][[:space:]]*//')
+len=$(printf '%s' "$body" | wc -m | tr -d ' ')
+fail() { echo "Blocked by commit-msg: $1" >&2; echo "  subject: $subject" >&2; exit 1; }
+[ "$len" -ge 10 ] || fail "subject is shorter than 10 characters. Say what the commit does."
+[ "$len" -le 72 ] || fail "subject is longer than 72 characters. Put details in the body."
+printf '%s' "$body" | grep -Eiq '^(wip|tmp|temp|misc|stuff|update|updates|fix|fixes|changes|test)([[:space:]]|$)' \
+  && fail "placeholder subject. Write an imperative sentence: 'Add retry to the fetch client'."
+case "$body" in *.) fail "remove the period at the end of the subject." ;; esac
+exit 0

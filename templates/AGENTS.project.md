@@ -1,26 +1,26 @@
-# <Проект> — правила для агентов
+# Project rules for agents
 
-<!-- Оглавление, а не книга: не больше 150 строк. Подробности — ссылками с условием «читай, когда». -->
+<!-- A table of contents, not a book. Maximum 150 lines. Give links for details. -->
 
-## Команды
-- install: `<команда>`
-- build: `<команда>`
-- lint: `<команда>`
-- test точечно: `<команда для одного пакета или файла>`
-- test полный (только по просьбе человека): `CLAUDE_FULL_TESTS=1 <команда>`
+## Commands
+- Install: `<command>`
+- Build: `<command>`
+- Lint: `<command>`
+- Test one package: `<command>`
+- Full test run: `CLAUDE_FULL_TESTS=1 <command>`. Use it only when the human tells you.
 
-## Карта кода
-- `<каталог>/` — <что там>
-- Архитектурные решения — `docs/adr/index.md`. Читай перед планом.
+## Code map
+- `<folder>/`: `<what it contains>`
+- Architecture decisions: `docs/adr/index.md`. Read it before you plan.
 
-## Ветки
-- Работаем в `dev`. `main` — продакшен, только через MR `dev` → `main`.
+## Branches
+- Work in `dev`. The `main` branch is production. Change `main` only through a merge request.
 
-## Правила проекта
-<!-- Каждое правило — из реального инцидента, со ссылкой на запись в error.md или ADR. -->
+## Project rules
+<!-- Each rule comes from a real incident. Give the INC ID or the ADR ID. -->
 - 
 
-## Зоны
-- Green (сам): чтение кода, поиск, локальная сборка, тесты по диффу, коммит в свою ветку.
-- Yellow (с апрувом): push, сборка образов, внешние сетевые запросы, правка `.claude/*` и `opencode.json`.
-- Red (запрещено): `.env` и секреты, `git reset --hard`, `rm -rf`, выход за пределы репозитория.
+## Zones
+- Green: read code, search, build, run tests for the change, commit to your branch.
+- Yellow: ask the human before you push, build images, send network requests or change `.claude/` and `opencode.json`.
+- Red: do not touch `.env` or secrets. Do not run `git reset --hard` or `rm -rf`. Do not work outside the repository.

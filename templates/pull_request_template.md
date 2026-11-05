@@ -1,10 +1,10 @@
-## Что сделано
+## What changed
 
-## Как проверено
+## How you checked it
 
 ## ADR
-- Relevant ADRs: <ID через запятую или «нет»>
-- Меняет принятое решение? Да / Нет / Не уверен
-- Если «Да»: какой `Reconsider When` сработал и чем это подтверждается
+- Relevant ADRs: `<IDs, or "none">`
+- Does this change an accepted decision? Yes / No / Not sure
+- If yes: which `Reconsider When` trigger occurred, and what shows it
 
-«Не уверен» — одобряет только человек.
+"Not sure" needs approval from a human.

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "test-env-broker":   { "command": "python", "args": [".harness/mcp/test_env_broker.py"],   "env": { "TEST_ENVS": "test-db:2" } },
+    "safe-edit":         { "command": "python", "args": [".harness/mcp/safe_edit.py"] },
+    "spec-registry":     { "command": "python", "args": [".harness/mcp/spec_registry.py"] },
+    "quality-gate":      { "command": "python", "args": [".harness/mcp/quality_gate.py"] },
+    "context-freshness": { "command": "python", "args": [".harness/mcp/context_freshness.py"], "env": { "FRESH_REF": "origin/dev" } },
+    "pii-reader":        { "command": "python", "args": [".harness/mcp/pii_reader.py"],        "env": { "PII_ROOT": "data" } },
+    "schema-store":      { "command": "python", "args": [".harness/mcp/schema_store.py"],      "env": { "SCHEMA_MAP": "" } },
+    "readonly-view":     { "command": "python", "args": [".harness/mcp/readonly_view.py"],     "env": { "READONLY_ROOT": "core" } },
+    "slot-scheduler":    { "command": "python", "args": [".harness/mcp/slot_scheduler.py"],    "env": { "SLOTS": "gpu:2,llm:8" } },
+    "redteam-runner":    { "command": "python", "args": [".harness/mcp/redteam_runner.py"],    "env": { "HARNESS_KIT": "" } }
+  }
+}
