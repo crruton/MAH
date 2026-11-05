@@ -8,7 +8,10 @@ import importlib
 import json
 import os
 import subprocess
+import queue
 import sys
+import threading
+import time
 import tempfile
 from pathlib import Path
 
@@ -25,27 +28,39 @@ def check(name, cond, note=""):
 
 
 def protocol(name, env):
+    """initialize -> initialized -> tools/list. Wait for each answer before the next step:
+    a server can stop at end of input before it answers."""
     p = subprocess.Popen([sys.executable, str(SERVERS / f"{name}.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                         stderr=subprocess.DEVNULL, text=True, encoding="utf-8", env=env)
-    msgs = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-            "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "selftest", "version": "1"}}},
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-    ]
+                         stderr=subprocess.DEVNULL, text=True, encoding="utf-8", env=env, bufsize=1)
+    lines = queue.Queue()
+    threading.Thread(target=lambda: [lines.put(l) for l in p.stdout], daemon=True).start()
+
+    def send(msg):
+        p.stdin.write(json.dumps(msg) + "\n")
+        p.stdin.flush()
+
+    def answer(msg_id, timeout=30):
+        end = time.time() + timeout
+        while time.time() < end:
+            try:
+                m = json.loads(lines.get(timeout=max(0.1, end - time.time())))
+            except (queue.Empty, ValueError):
+                continue
+            if m.get("id") == msg_id:
+                return m
+        return {}
+
     try:
-        out, _ = p.communicate("".join(json.dumps(m) + "\n" for m in msgs), timeout=30)
-    except subprocess.TimeoutExpired:
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "selftest", "version": "1"}}})
+        if not answer(1):
+            return []
+        send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        return [t["name"] for t in answer(2).get("result", {}).get("tools", [])]
+    finally:
         p.kill()
-        out, _ = p.communicate()
-    for line in out.splitlines():
-        try:
-            m = json.loads(line)
-        except ValueError:
-            continue
-        if m.get("id") == 2:
-            return [t["name"] for t in m["result"]["tools"]]
-    return []
+        p.wait()
 
 
 def main():
