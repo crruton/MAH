@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0] - 2026-11-06
+
+### Added
+- Error collector `gates/collect.py` and error store `.harness/errors/events-YYYY-MM-<author>.jsonl` (one file per author and month, committed to git, secrets masked).
+- Events from agent hooks, git hooks, gates, failed agent tool calls (`collect-tool-errors.sh`, PostToolUse) and incidents.
+- Error statistics `metrics/errors.py` and `./harness.sh errors`: barriers, weekly trend, repeats, incidents, Enforcement Ratio. `--suggest` turns repeats into incident commands.
+- Barriers B21-B27, gate `check-portability`: the Linux/Windows errors that the agent made while it wrote this kit.
+- `error.md` of the kit: 9 incidents of the agent that wrote it. `docs/errors.md`: their statistics.
+- Profiles `--profile core|full`, `--mcp`, `--skills`. Core is the default: no MCP, 5 skills.
+- `metrics/budget.py` and `./harness.sh budget`: tokens in each session and hook latency.
+
+### Changed
+- `guard.sh` replaces guard-tests.sh, guard-destructive.sh and guard-secrets.sh: one process, one jq call, bash regex. About 130 ms on each tool call instead of about 2.5 s.
+- `docker compose down` is not blocked any more. `docker volume prune` and `docker system prune` are still blocked.
+- MCP requirements have upper bounds: `mcp>=1.2,<3`, `jsonschema>=4,<5`.
+
 ## [0.3.0] - 2026-11-05
 
 ### Added

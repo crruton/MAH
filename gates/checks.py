@@ -149,7 +149,7 @@ def adr_links() -> int:
 
 # ---------- B19
 REQUIRED_DENY = ["Read(./.env)", "git reset --hard", "rm -rf", "git push --force"]
-REQUIRED_HOOKS = ["guard-tests.sh", "guard-destructive.sh", "guard-secrets.sh"]
+REQUIRED_HOOKS = ["guard.sh"]
 
 
 def zones() -> int:
@@ -198,7 +198,7 @@ def digest(p: Path) -> str:
 
 def lock() -> int:
     data = {str(p).replace("\\", "/"): digest(p) for p in guarded_files()}
-    LOCK.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    LOCK.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print(f"harness.lock: {len(data)} files")
     return 0
 

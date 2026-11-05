@@ -7,7 +7,7 @@ on:
 
 jobs:
   barriers:
-    name: 20 barriers block their attacks
+    name: 27 barriers block their attacks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,24 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get install -y jq
       - run: bash try-it.sh
+
+  self-check:
+    name: the kit passes its own gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: portability B21-B27 on all files
+        run: python gates/check-portability.py
+        env:
+          HARNESS_ALL: "1"
+          HARNESS_ERRORS: "0"
+      - name: error log of the kit
+        run: python gates/check-error-log.py error.md
+      - name: error statistics build
+        run: python metrics/errors.py --repo . > /dev/null
 
   ste:
     name: agent-facing text follows ASD-STE100
@@ -63,6 +81,13 @@ jobs:
           sed -i 's#^- \*\*Applies To:\*\*.*#- **Applies To:** `src/**`#; s#^- \*\*Reconsider When:\*\*.*#- **Reconsider When:** RPS above 100#' "$adr"
           ./harness.sh check "$repo"
           test -f "$repo/docs/metrics.md"
+          ./harness.sh errors "$repo"
+          test -f "$repo/docs/errors.md"
+          ./harness.sh budget "$repo"
+          full=$(mktemp -d)
+          git -C "$full" init -q
+          ./harness.sh install "$full" --profile full
+          test -f "$full/.mcp.json" && test -f "$full/.claude/skills/async-boundary/SKILL.md"
       - name: syntax
         run: |
           for f in harness.sh install.sh try-it.sh gates/*.sh hooks/*.sh hooks/pre-push hooks/commit-msg; do bash -n "$f"; done

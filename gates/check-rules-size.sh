@@ -10,6 +10,7 @@ for f in "${files[@]}"; do
   n=$(wc -l < "$f" | tr -d ' ')
   if [ "$n" -gt "$limit" ]; then
     echo "FAIL: $f has $n lines (limit $limit). Move details to linked docs." >&2; rc=1
+    "$(command -v python3 || command -v python)" "$(dirname "$0")/collect.py" --source gate --barrier B17 --name check-rules-size --outcome failed --detail "$f has $n lines" >/dev/null 2>&1 || true
   else
     echo "check-rules-size: $f $n/$limit OK"
   fi

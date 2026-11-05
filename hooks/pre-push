@@ -3,17 +3,24 @@
 # Work goes to dev; main changes only through a merge request.
 # Install: git config core.hooksPath .githooks
 zero=0000000000000000000000000000000000000000
+log_event() { # log_event <barrier> <detail>
+    root=$(git rev-parse --show-toplevel 2>/dev/null); py=$(command -v python3 || command -v python)
+    [ -f "$root/gates/collect.py" ] && "$py" "$root/gates/collect.py" --source git-hook --barrier "$1" --name pre-push --detail "$2" >/dev/null 2>&1
+}
 while read local_ref local_sha remote_ref remote_sha; do
     case "$remote_ref" in
         refs/heads/main|refs/heads/master)
+            log_event B01 "push to $remote_ref"
             echo "Blocked by pre-push: push to $remote_ref. Push to dev and open a merge request dev -> main." >&2
             exit 1 ;;
     esac
     if [ "$local_sha" = "$zero" ]; then
+        log_event B02 "delete $remote_ref"
         echo "Blocked by pre-push: deletion of $remote_ref. Ask a human." >&2
         exit 1
     fi
     if [ "$remote_sha" != "$zero" ] && ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+        log_event B02 "force push to $remote_ref"
         echo "Blocked by pre-push: force push to $remote_ref rewrites history. Ask a human." >&2
         exit 1
     fi

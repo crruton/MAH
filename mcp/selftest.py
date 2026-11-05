@@ -69,14 +69,14 @@ def main():
     run("init", "-q", "-b", "dev")
     run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
     (repo / "core").mkdir()
-    (repo / "core" / "engine.txt").write_text("core logic", encoding="utf-8")
+    (repo / "core" / "engine.txt").write_text("core logic", encoding="utf-8", newline="\n")
     (repo / "data").mkdir()
-    (repo / "data" / "calls.txt").write_text("Call from ivan@example.com, phone +7 912 345-67-89\n", encoding="utf-8")
+    (repo / "data" / "calls.txt").write_text("Call from ivan@example.com, phone +7 912 345-67-89\n", encoding="utf-8", newline="\n")
     (repo / "schemas").mkdir()
-    (repo / "schemas" / "s.json").write_text(json.dumps({"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}), encoding="utf-8")
+    (repo / "schemas" / "s.json").write_text(json.dumps({"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}), encoding="utf-8", newline="\n")
     (repo / "config").mkdir()
     (repo / "docs" / "adr").mkdir(parents=True)
-    (repo / "docs" / "adr" / "0001-queue.md").write_text("# ADR-0001: Queue\n", encoding="utf-8")
+    (repo / "docs" / "adr" / "0001-queue.md").write_text("# ADR-0001: Queue\n", encoding="utf-8", newline="\n")
     env = dict(os.environ, HARNESS_ROOT=str(repo), SCHEMA_MAP="config:schemas/s.json", FRESH_REF="HEAD",
                PYTHONPATH=os.pathsep.join([str(SERVERS), os.environ.get("PYTHONPATH", "")]))
     os.environ.update({k: env[k] for k in ("HARNESS_ROOT", "SCHEMA_MAP", "FRESH_REF")})
@@ -129,7 +129,7 @@ def main():
 
     rt = m["redteam_runner"]
     sc = rt.list_scenarios()
-    check("redteam_runner: 20 scenarios", len(sc) == 20, f"{len(sc)}")
+    check("redteam_runner: 27 scenarios", len(sc) == 27, f"{len(sc)}")
     check("redteam_runner: B01 blocked", rt.run_scenario("B01")["blocked"] is True)
 
     qg = m["quality_gate"]

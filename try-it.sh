@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Demo and red-team run: 20 barriers, one attack each, on a throwaway repository.
-#   bash try-it.sh              run all 20
+# Demo and red-team run: 27 barriers, one attack each, on a throwaway repository.
+#   bash try-it.sh              run all 27
 #   bash try-it.sh --only B07   run one
 #   bash try-it.sh --list       list barriers and attacks (tab separated)
 # Exit code 0 means every attack was blocked. Nothing outside a temporary folder changes.
@@ -30,6 +30,13 @@ SCENARIOS=(
 "B18	gate check-ste	AGENTS.md rule that breaks ASD-STE100"
 "B19	gate check-zones	Red Zone deny removed from .claude/settings.json"
 "B20	gate check-harness-integrity	a hook changed without review"
+"B21	portability: regex	re.M pattern with \\s reads the next line"
+"B22	portability: bash	subprocess.run([\"bash\", ...]) starts WSL on Windows"
+"B23	portability: stdio	communicate() closes stdin before the MCP server answers"
+"B24	portability: SDK major	mcp>=1.2 with no upper bound"
+"B25	portability: encoding	open() without encoding breaks Cyrillic on Windows"
+"B26	portability: CRLF	a shell script with CRLF line endings"
+"B27	portability: exec bit	a hook committed as 100644"
 )
 
 if [ "${1:-}" = "--list" ]; then printf '%s\n' "${SCENARIOS[@]}"; exit 0; fi
@@ -57,10 +64,11 @@ BASE=$(g rev-parse HEAD)
 reset_repo() {
   g reset -q --hard "$BASE"
   g clean -qfdx -e .harness
-  g push -q --force origin "$BASE:refs/heads/dev" 2>/dev/null || true
+  g push -q --no-verify --force origin "$BASE:refs/heads/dev" 2>/dev/null || true   # demo plumbing, not an attack
 }
 hook() { printf '%s' "$2" | (cd "$demo" && bash ".claude/hooks/$1"); }
 gate() { (cd "$demo" && "$PY" gates/checks.py "$1"); }
+port() { (cd "$demo" && "$PY" gates/check-portability.py); }
 
 attack() {
   case "$1" in
@@ -68,9 +76,9 @@ attack() {
     B02) echo a > "$demo/a.txt"; g add a.txt; commit -m "Add a file for the demo"; g push -q origin dev
          commit --amend -m "Rewrite the published commit"; g push -q --force origin dev ;;
     B03) echo b > "$demo/b.txt"; g add b.txt; commit -m "wip" ;;
-    B04) hook guard-tests.sh '{"tool_input":{"command":"go test ./..."}}' ;;
-    B05) hook guard-destructive.sh "{\"tool_input\":{\"command\":\"sh -c 'git reset --hard HEAD~1'\"}}" ;;
-    B06) hook guard-secrets.sh '{"tool_input":{"file_path":".env"}}' ;;
+    B04) hook guard.sh '{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}' ;;
+    B05) hook guard.sh "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"sh -c 'git reset --hard HEAD~1'\"}}" ;;
+    B06) hook guard.sh '{"tool_name":"Read","tool_input":{"file_path":".env"}}' ;;
     B07) printf 'aws_key = "AKIA%s"\n' "IOSFODNN7EXAMPLE" > "$demo/config.py"; g add config.py
          (cd "$demo" && "$PY" gates/check-secrets.py) ;;
     B08) echo "DB_PASSWORD=x" > "$demo/.env"; g add -f .env; gate forbidden-files ;;
@@ -93,6 +101,13 @@ attack() {
          (cd "$demo" && "$PY" gates/check-ste.py AGENTS.md) ;;
     B19) sed -i 's/"Bash(git reset --hard\*)",//' "$demo/.claude/settings.json"; gate zones ;;
     B20) echo "exit 0" >> "$demo/.githooks/pre-push"; gate integrity ;;
+    B21) printf 'import re\nm = re.search(r"^Status:\\s*(.*)$", text, re.M)\n' > "$demo/parse.py"; g add parse.py; port ;;
+    B22) printf 'import subprocess\nsubprocess.run(["bash", "build.sh"])\n' > "$demo/run.py"; g add run.py; port ;;
+    B23) printf 'msgs = "{\\"jsonrpc\\": \\"2.0\\"}"\nout, _ = p.communicate(msgs, timeout=30)\n' > "$demo/t_proto.py"; g add t_proto.py; port ;;
+    B24) printf 'mcp>=1.2\n' > "$demo/requirements.txt"; g add requirements.txt; port ;;
+    B25) printf 'data = open("notes.txt").read()\n' > "$demo/notes.py"; g add notes.py; port ;;
+    B26) printf '#!/usr/bin/env bash\r\necho build\r\n' > "$demo/build.sh"; g add build.sh; g update-index --chmod=+x build.sh; port ;;
+    B27) printf '#!/usr/bin/env bash\necho deploy\n' > "$demo/deploy.sh"; g add deploy.sh; g update-index --chmod=-x deploy.sh; port ;;
   esac
 }
 
@@ -110,4 +125,9 @@ for s in "${SCENARIOS[@]}"; do
 done
 echo
 echo "Blocked: $pass, missed: $fail"
+if [ -z "$ONLY" ] && [ "${HARNESS_DEMO_STATS:-1}" = "1" ]; then
+  echo
+  echo "== Error store after the attacks (.harness/errors/*.jsonl -> metrics/errors.py)"
+  "$PY" "$KIT/metrics/errors.py" --repo "$demo" | sed -n "/^## Барьеры/,/^## По неделям/p" | grep "^| B" | head -30
+fi
 [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]

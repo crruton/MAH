@@ -2,11 +2,13 @@
 # self-harness launcher: one entry point for the whole process.
 #
 #   ./harness.sh                     interactive menu
-#   ./harness.sh start  <repo>       one button: doctor -> install -> check -> metrics -> next steps
+#   ./harness.sh start  <repo> [--profile core|full] [--mcp a,b]   one button: doctor, install, check, metrics
 #   ./harness.sh doctor              check prerequisites
-#   ./harness.sh demo [Bnn]          20 barriers (or one) attacked on a throwaway repo
-#   ./harness.sh barriers            list the 20 barriers
-#   ./harness.sh install  <repo>     copy templates, hooks, gates into a repo (never overwrites)
+#   ./harness.sh demo [Bnn]          27 barriers (or one) attacked on a throwaway repo
+#   ./harness.sh barriers            list the 27 barriers
+#   ./harness.sh errors   <repo> [--suggest]   error statistics -> <repo>/docs/errors.md
+#   ./harness.sh budget   <repo>     tokens and hook latency that the harness costs the agent
+#   ./harness.sh install  <repo> [--profile core|full] [--mcp a,b] [--skills process|all]
 #   ./harness.sh check    <repo>     run all gates
 #   ./harness.sh metrics  <repo>     weekly convergence metrics -> <repo>/docs/metrics.md
 #   ./harness.sh incident <repo> "title"   new error.md entry with the next INC id
@@ -61,7 +63,7 @@ cmd_demo() {
   if [ -n "${1:-}" ]; then bash "$KIT/try-it.sh" --only "$1"; else bash "$KIT/try-it.sh"; fi
 }
 
-cmd_barriers() { head_ "20 барьеров"; bash "$KIT/try-it.sh" --list | awk -F'\t' '{printf "  %-4s %-32s %s\n", $1, $2, $3}'; }
+cmd_barriers() { head_ "27 барьеров"; bash "$KIT/try-it.sh" --list | awk -F'\t' '{printf "  %-4s %-32s %s\n", $1, $2, $3}'; }
 
 cmd_lock() {
   local repo; repo="$(need_repo "${1:-}")" || return 1
@@ -70,9 +72,22 @@ cmd_lock() {
 }
 
 cmd_install() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
+  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
   head_ "Установка в $repo"
-  bash "$KIT/install.sh" "$repo"
+  bash "$KIT/install.sh" "$repo" "$@"
+}
+
+cmd_errors() {
+  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
+  head_ "Статистика ошибок: $repo"
+  if [ "${1:-}" = "--suggest" ]; then "$PY" "$KIT/metrics/errors.py" --repo "$repo" --suggest; return; fi
+  "$PY" "$KIT/metrics/errors.py" --repo "$repo" --out docs/errors.md | sed -n "1,40p"
+  ok "полный отчёт: docs/errors.md"
+}
+
+cmd_budget() {
+  local repo; repo="$(need_repo "${1:-}")" || return 1
+  "$PY" "$KIT/metrics/budget.py" --repo "$repo"
 }
 
 cmd_check() {
@@ -153,10 +168,10 @@ cmd_loadtest() {
 }
 
 cmd_start() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
+  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
   say "${B}self-harness: шаг 1 процесса — базовая линия для $repo${N}"
   cmd_doctor || warn "есть недостающие инструменты, продолжаю"
-  cmd_install "$repo" || return 1
+  cmd_install "$repo" "$@" || return 1
   if [ -n "$(git -C "$repo" status --porcelain)" ]; then
     warn "харнес скопирован, но не закоммичен: проверьте файлы и сделайте коммит"
   fi
@@ -168,7 +183,8 @@ cmd_start() {
   say "  3. Защитите main на сервере (push: никто), работайте в dev."
   say "  4. Добавьте 'bash gates/run-all.sh' в CI — пример в $KIT/ci/."
   say "  5. Ошибка агента: ./harness.sh incident $repo \"что случилось\""
-  say "  6. Раз в неделю: ./harness.sh metrics $repo"
+  say "  6. Раз в неделю: ./harness.sh metrics $repo и ./harness.sh errors $repo"
+  say "  7. Цена харнеса для агента: ./harness.sh budget $repo"
   say "  Подробно: $KIT/PROCESS.md"
 }
 
@@ -179,7 +195,7 @@ menu() {
     printf 'Репозиторий: %s\n\n' "${repo:-не выбран}"
     cat <<'M'
   1) Старт: базовая линия в репозитории (одна кнопка)
-  2) Демо: 20 атак на барьеры на временном репозитории
+  2) Демо: 27 атак на барьеры на временном репозитории
   3) Проверить окружение
   4) Проверить гейты
   5) Метрики сходимости
@@ -187,13 +203,15 @@ menu() {
   7) Новый ADR
   8) Нагрузочный тест (k6)
   l) Принять изменение харнеса (harness.lock)
-  b) Список 20 барьеров
+  b) Список 27 барьеров
+  e) Статистика ошибок
+  t) Цена харнеса (токены, задержка хуков)
   9) Выбрать репозиторий
   0) Выход
 M
     read -r -p "> " c || return 0
     case "$c" in
-      1|4|5|6|7|l) [ -n "$repo" ] || { read -r -p "Путь к репозиторию: " repo; } ;;
+      1|4|5|6|7|l|e|t) [ -n "$repo" ] || { read -r -p "Путь к репозиторию: " repo; } ;;
     esac
     case "$c" in
       1) cmd_start "$repo" ;;
@@ -206,6 +224,8 @@ M
       8) cmd_loadtest ;;
       l) cmd_lock "$repo" ;;
       b) cmd_barriers ;;
+      e) cmd_errors "$repo" ;;
+      t) cmd_budget "$repo" ;;
       9) read -r -p "Путь к репозиторию: " repo ;;
       0|q|Q) return 0 ;;
       *) warn "нет такого пункта" ;;
@@ -215,7 +235,7 @@ M
 
 case "${1:-menu}" in
   menu) menu ;;
-  start|doctor|demo|barriers|install|check|metrics|incident|adr|loadtest|lock) c="$1"; shift; "cmd_$c" "$@" ;;
+  start|doctor|demo|barriers|install|check|metrics|incident|adr|loadtest|lock|errors|budget) c="$1"; shift; "cmd_$c" "$@" ;;
   -h|--help|help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0" ;;
   *) err "неизвестная команда: $1"; awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 2 ;;
 esac

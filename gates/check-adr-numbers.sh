@@ -6,6 +6,8 @@ dir="${1:-docs/adr}"
 [ -d "$dir" ] || { echo "check-adr-numbers: no $dir, skipped"; exit 0; }
 dups=$(ls "$dir" | grep -Eo '^(ADR-)?[0-9]{3,4}' | sed 's/^ADR-//' | sort | uniq -d || true)
 if [ -n "$dups" ]; then
+  py=$(command -v python3 || command -v python)
+  "$py" "$(dirname "$0")/collect.py" --source gate --barrier B13 --name check-adr-numbers --outcome failed --detail "duplicate ADR numbers: $(echo $dups)" >/dev/null 2>&1 || true
   echo "FAIL: duplicate ADR numbers in $dir:" >&2
   for n in $dups; do ls "$dir" | grep -E "^(ADR-)?$n" | sed 's/^/  /' >&2; done
   next=$(ls "$dir" | grep -Eo '^(ADR-)?[0-9]{3,4}' | sed 's/^ADR-//' | sort -n | tail -1)

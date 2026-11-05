@@ -5,6 +5,7 @@
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 py=$(command -v python3 || command -v python)
+[ -f .harness/config ] && . .harness/config   # profile: HARNESS_SKIP defaults
 skip=" ${HARNESS_SKIP:-} "
 rc=0 n=0 failed=()
 run() { # run <gate-name> <command...>
@@ -25,6 +26,7 @@ run check-adr-links         "$py" "$here/checks.py" adr-links
 run check-error-log         "$py" "$here/check-error-log.py" error.md
 run check-rules-size        bash  "$here/check-rules-size.sh" 150 AGENTS.md CLAUDE.md
 run check-ste               "$py" "$here/check-ste.py"
+run check-portability       "$py" "$here/check-portability.py"
 run check-zones             "$py" "$here/checks.py" zones
 run check-harness-integrity "$py" "$here/checks.py" integrity
 echo

@@ -30,7 +30,7 @@ print(f"{'tokens':>7} {'rules':>6} {'per rule':>9}  file   ({name})")
 for f in sorted(set(files)):
     text = open(f, encoding="utf-8").read()
     t = len(enc.encode(text))
-    rules = len(re.findall(r"^\s*(-|\d+\.)\s", text, re.M)) or 1
+    rules = len(re.findall(r"^[ \t]*(-|\d+\.)[ \t]", text, re.M)) or 1
     total += t
     print(f"{t:>7} {rules:>6} {t / rules:>9.1f}  {f}")
 print(f"{total:>7} total")
