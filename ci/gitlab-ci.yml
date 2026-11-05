@@ -1,0 +1,11 @@
+# Add to .gitlab-ci.yml in your project after ./harness.sh install.
+harness-gates:
+  stage: test
+  image: python:3.12-alpine
+  before_script:
+    - apk add --no-cache bash git
+  script:
+    - bash gates/run-all.sh
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "dev"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
