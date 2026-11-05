@@ -1,4 +1,4 @@
-# agent-harness-core
+# self-harness
 
 Процесс, в котором ИИ-агенты работают над проектом и сами держат границы его дрейфа. Здесь всё, что нужно, чтобы взять этот процесс, развернуть у себя за 10 минут и попробовать.
 
@@ -22,8 +22,8 @@
 ## Попробовать за 2 минуты
 
 ```bash
-git clone <url этого репозитория> agent-harness-core
-cd agent-harness-core
+git clone https://github.com/crruton/self-harness.git
+cd self-harness
 bash try-it.sh
 ```
 
