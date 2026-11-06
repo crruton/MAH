@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Cost of the harness for the agent: tokens in each session and hook latency on each tool call.
+"""What self-harness costs the agent: tokens in each session and latency on each tool call.
 
   budget.py [--repo PATH] [--runs N]
 
-What the agent pays:
-  rules      CLAUDE.md, AGENTS.md and their @imports: read at the start of each session.
-  skills     name and description of each skill: in the context of each session.
-             The body loads only when the agent uses the skill.
-  mcp        tool definitions of each MCP server from .mcp.json: in the context of each session.
-             Measured with a real tools/list call when the mcp package is installed.
-  hooks      latency of each hook on each matching tool call (median of N runs).
+Global part (CLAUDE_CONFIG_DIR or ~/.claude):
+  skills   name and description of each skill are in the context of each session.
+           The body loads only when the agent uses the skill. Ours: harness/installed-skills.txt.
+  rules    harness/AGENTS.md, only when you installed with --rules.
+  hooks    median latency of guard.sh (PreToolUse) and collect-tool-errors.sh (PostToolUse).
+Project part (--repo): MCP tool definitions from <repo>/.mcp.json (extras), measured with
+a real tools/list call when the mcp package is installed.
 Tokens: tiktoken o200k_base when installed (an estimate for Claude), else characters / 4.
 """
 import argparse
@@ -34,48 +34,18 @@ except ImportError:
     def tokens(text): return round(len(text) / 4)
     METHOD = "chars/4 (pip install tiktoken for a better estimate)"
 
-
-def rules(repo: Path):
-    seen, total, rows = set(), 0, []
-
-    def add(p: Path):
-        nonlocal total
-        if not p.exists() or p in seen:
-            return
-        seen.add(p)
-        text = p.read_text(encoding="utf-8")
-        t = tokens(text)
-        total += t
-        rows.append((str(p.relative_to(repo)) if repo in p.parents or p == repo else str(p), t))
-        for imp in re.findall(r"^@(\S+)", text, re.M):
-            add((p.parent / imp).resolve())
-
-    add(repo / "CLAUDE.md")
-    add(repo / "AGENTS.md")
-    return total, rows
+H = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+HH = Path(os.environ.get("HARNESS_HOME") or H / "harness")
 
 
-def skills(repo: Path):
-    rows = []
-    for f in sorted((repo / ".claude" / "skills").glob("*/SKILL.md")):
-        text = f.read_text(encoding="utf-8")
-        m = re.match(r"^---\n(.*?)\n---\n(.*)$", text, re.S)
-        head, body = (m.group(1), m.group(2)) if m else ("", text)
-        rows.append((f.parent.name, tokens(head), tokens(body)))
-    return rows
-
-
-def mcp_tools(repo: Path):
-    cfg = repo / ".mcp.json"
-    if not cfg.exists():
-        return []
-    rows = []
-    for name, s in json.loads(cfg.read_text(encoding="utf-8")).get("mcpServers", {}).items():
-        env = dict(os.environ, **{k: v for k, v in s.get("env", {}).items() if v}, HARNESS_ROOT=str(repo))
-        cmd = [sys.executable if s["command"] in ("python", "python3") else s["command"], *s.get("args", [])]
-        tools = list_tools(cmd, env, repo)
-        rows.append((name, len(tools), tokens(json.dumps(tools, ensure_ascii=False)) if tools else None))
-    return rows
+def skills():
+    mine = set((HH / "installed-skills.txt").read_text(encoding="utf-8").split()) if (HH / "installed-skills.txt").exists() else set()
+    ours, other = [], []
+    for f in sorted((H / "skills").glob("*/SKILL.md")):
+        m = re.match(r"^---\n(.*?)\n---\n(.*)$", f.read_text(encoding="utf-8"), re.S)
+        head = m.group(1) if m else ""
+        (ours if f.parent.name in mine else other).append((f.parent.name, tokens(head)))
+    return ours, other
 
 
 def list_tools(cmd, env, cwd):
@@ -114,24 +84,37 @@ def list_tools(cmd, env, cwd):
         p.kill()
 
 
+def mcp(repo: Path):
+    cfg = repo / ".mcp.json"
+    if not cfg.exists():
+        return []
+    rows = []
+    for name, s in json.loads(cfg.read_text(encoding="utf-8")).get("mcpServers", {}).items():
+        env = dict(os.environ, **{k: v for k, v in s.get("env", {}).items() if v}, HARNESS_ROOT=str(repo))
+        cmd = [sys.executable if s["command"] in ("python", "python3") else s["command"], *s.get("args", [])]
+        tools = list_tools(cmd, env, repo)
+        rows.append((name, len(tools), tokens(json.dumps(tools, ensure_ascii=False)) if tools else None))
+    return rows
+
+
 SAMPLES = {
     "guard.sh": {"tool_name": "Bash", "tool_input": {"command": "git status"}},
     "collect-tool-errors.sh": {"tool_name": "Bash", "tool_input": {"command": "ls"}, "tool_response": {"stdout": "ok"}},
 }
 
 
-def hooks(repo: Path, runs: int):
+def hooks(runs: int, cwd: Path):
     bash = shutil.which("bash") or "bash"
     rows = []
     for name, sample in SAMPLES.items():
-        h = repo / ".claude" / "hooks" / name
+        h = HH / "hooks" / name
         if not h.exists():
             continue
         ms = []
         for _ in range(runs):
             t0 = time.perf_counter()
-            subprocess.run([bash, str(h)], input=json.dumps(sample), cwd=repo, capture_output=True,
-                           text=True, encoding="utf-8")
+            subprocess.run([bash, str(h)], input=json.dumps(sample), cwd=cwd, capture_output=True, text=True,
+                           encoding="utf-8", env=dict(os.environ, HARNESS_ERRORS="0"))
             ms.append((time.perf_counter() - t0) * 1000)
         rows.append((name, round(statistics.median(ms))))
     return rows
@@ -139,37 +122,38 @@ def hooks(repo: Path, runs: int):
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default=".")
-    ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--repo", default="")
+    ap.add_argument("--runs", type=int, default=7)
     a = ap.parse_args()
-    repo = Path(a.repo).resolve()
     sys.stdout.reconfigure(encoding="utf-8")
+    repo = Path(a.repo).resolve() if a.repo else None
 
-    r_total, r_rows = rules(repo)
-    s_rows = skills(repo)
-    m_rows = mcp_tools(repo)
-    h_rows = hooks(repo, a.runs)
-    s_head = sum(r[1] for r in s_rows)
-    m_tok = sum(r[2] or 0 for r in m_rows)
+    ours, other = skills()
+    rules = tokens((HH / "AGENTS.md").read_text(encoding="utf-8")) if (HH / "AGENTS.md").exists() else 0
+    m_rows = mcp(repo) if repo else []
+    h_rows = hooks(a.runs, repo or Path.cwd())
+    s_ours = sum(t for _, t in ours)
+    m_tok = sum(t or 0 for _, _, t in m_rows)
 
-    print(f"# Harness budget ({METHOD})\n")
-    print("## Tokens in each session")
-    print(f"  rules        {r_total:>6}   " + ", ".join(f"{n} {t}" for n, t in r_rows))
-    print(f"  skills       {s_head:>6}   {len(s_rows)} descriptions (bodies {sum(r[2] for r in s_rows)} tokens load only on use)")
+    print(f"# self-harness budget ({METHOD})\n")
+    print("## Tokens that self-harness adds to each session")
+    print(f"  skills        {s_ours:>6}   {len(ours)} descriptions: {', '.join(n for n, _ in ours) or 'none'}")
+    print(f"  rules         {rules:>6}   {'harness/AGENTS.md (--rules)' if rules else 'not installed (your CLAUDE.md stays as it is)'}")
     if m_rows:
-        failed = [n for n, c, t in m_rows if t is None]
-        print(f"  mcp          {m_tok:>6}   {sum(c for _, c, _ in m_rows)} tools in {len(m_rows)} servers"
-              + (f"  (not measured: {', '.join(failed)} — pip install -r .harness/mcp/requirements.txt)" if failed else ""))
+        print(f"  mcp (extras)  {m_tok:>6}   {sum(c for _, c, _ in m_rows)} tools in {len(m_rows)} servers of {repo.name}/.mcp.json")
         for n, c, t in m_rows:
-            print(f"                 {n:<20} {c} tools, {t if t is not None else '?'} tokens")
-    else:
-        print("  mcp               0   no .mcp.json")
-    print(f"  total        {r_total + s_head + m_tok:>6}")
+            print(f"                  {n:<20} {c} tools, {t if t is not None else '?'} tokens")
+    print(f"  total         {s_ours + rules + m_tok:>6}")
+    if other:
+        print(f"  (not ours: {len(other)} other skills, {sum(t for _, t in other)} tokens)")
     print("\n## Latency on each tool call")
     for n, ms in h_rows:
         print(f"  {n:<26} {ms:>4} ms")
-    print(f"  each tool call: ~{sum(ms for _, ms in h_rows)} ms (PreToolUse guard.sh + PostToolUse collect-tool-errors.sh)")
-    print("\nCompare this cost with the errors the barriers stopped: ./harness.sh errors <repo>")
+    if h_rows:
+        print(f"  total                      {sum(ms for _, ms in h_rows):>4} ms")
+    else:
+        print("  no hooks: run bash install.sh")
+    print("\nCompare with what the barriers stopped and how often they asked you: ./harness.sh errors")
     return 0
 
 

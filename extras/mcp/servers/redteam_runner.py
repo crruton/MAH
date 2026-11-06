@@ -12,7 +12,7 @@ import subprocess
 
 from _common import bash, server
 
-KIT = Path(os.environ.get("HARNESS_KIT", Path(__file__).resolve().parents[2]))
+KIT = Path(os.environ.get("HARNESS_KIT", Path(__file__).resolve().parents[3]))
 mcp = server("redteam-runner")
 
 

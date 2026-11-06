@@ -144,3 +144,42 @@ The agent that wrote this kit made these errors. Each one became a barrier or a 
 - Repro: no machine check. The error statistics show it as a repeat class
 - ADR: -
 - Status: closed
+
+## INC-2026-11-06-04: the pack was tied to projects and cost more than it gave
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: install.sh, hooks/guard.sh
+- Symptom: the user pointed out four harms: 10 MCP servers in each session, SIP skills as noise, guard-destructive blocked docker compose down -v and rm -rf build, check-changelog on each small change
+- Cause: the agent added modules because they existed, not because statistics showed a need. The demo checked only attacks, not normal work
+- Class: false positive, cost
+- Barrier: global install with a minimal core (MCP and domain skills moved to extras), guard.sh with deny/ask/allow levels, 8 normal actions in the demo that must pass
+- Level: hook
+- Repro: try-it.sh shows "false positives: 0"; ./harness.sh budget shows about 160 tokens and 110 ms
+- ADR: -
+- Status: closed
+
+## INC-2026-11-06-05: Git Bash rewrote a "/path" argument for Windows Python
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: install.sh (uninstall of the CLAUDE.md import)
+- Symptom: uninstall left the import line in CLAUDE.md
+- Cause: MSYS path conversion changed the argument "/harness/AGENTS.md" to "C:/Program Files/Git/harness/AGENTS.md"
+- Class: portability
+- Barrier: no leading slash in arguments to Windows programs. The global-install CI job checks that uninstall removes the line
+- Level: hook
+- Repro: CI job global-install
+- ADR: -
+- Status: closed
+
+## INC-2026-11-06-06: the demo counted "file not found" as a working barrier
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: try-it.sh
+- Symptom: with a broken install, 24 of 27 attacks showed "blocked"
+- Cause: the demo took any non-zero exit code as a block
+- Class: false confidence
+- Barrier: an attack counts only when the output has "Blocked by" or "FAIL", or the hook asked. Other failures show "DEMO ERROR"
+- Level: hook
+- Repro: break gates/ in the demo repository. The demo must show DEMO ERROR, not blocked
+- ADR: -
+- Status: closed

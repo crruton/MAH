@@ -129,7 +129,7 @@ def main():
 
     rt = m["redteam_runner"]
     sc = rt.list_scenarios()
-    check("redteam_runner: 27 scenarios", len(sc) == 27, f"{len(sc)}")
+    check("redteam_runner: 25 scenarios", len(sc) == 25, f"{len(sc)}")
     check("redteam_runner: B01 blocked", rt.run_scenario("B01")["blocked"] is True)
 
     qg = m["quality_gate"]

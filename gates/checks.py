@@ -3,13 +3,12 @@
 
 Gates:
   forbidden-files   B08  secret files are tracked (.env, keys, certificates)
-  large-files       B09  a changed file is larger than HARNESS_MAX_FILE_KB (default 1024)
+  large-files       B09  a changed file is larger than HARNESS_MAX_FILE_KB (default 1024). Optional
   conflict-markers  B10  merge conflict markers in changed files
   test-weakening    B11  a test was skipped or lost assertions
-  changelog         B12  code changed but CHANGELOG.md did not
   adr-fields        B14  an ADR has no Status, Applies To or Reconsider When
   adr-links         B15  an ADR refers to an ADR that does not exist
-  zones             B19  Red Zone deny rules or agent hooks are missing
+  zones             B19  a project setting opens a Red Zone action or turns off the hooks
   integrity         B20  harness files differ from harness.lock
   lock                   write harness.lock (run after a reviewed harness change)
 """
@@ -96,18 +95,6 @@ def test_weakening() -> int:
     return report("check-test-weakening", problems)
 
 
-# ---------- B12
-DOC = re.compile(r"(\.md|\.txt|\.png|\.jpg|\.svg)$|^(docs|\.github|\.claude)/|^(LICENSE|CHANGELOG\.md)$")
-
-
-def changelog() -> int:
-    files = changed_files()
-    code = [f for f in files if not DOC.search(f)]
-    if code and "CHANGELOG.md" not in files:
-        return report("check-changelog", [f"{len(code)} code file(s) changed, CHANGELOG.md did not. Add an entry under [Unreleased]."])
-    return report("check-changelog", [])
-
-
 # ---------- B14, B15
 def adr_files():
     d = Path(ADR_DIR)
@@ -148,31 +135,30 @@ def adr_links() -> int:
 
 
 # ---------- B19
-REQUIRED_DENY = ["Read(./.env)", "git reset --hard", "rm -rf", "git push --force"]
-REQUIRED_HOOKS = ["guard.sh"]
+# A project setting must not open what the global guard closes.
+RISKY_ALLOW = ["git reset", "git clean", "git push --force", "git push -f", "rm -rf", ".env", "secrets/", "*.pem", "*.key"]
 
 
 def zones() -> int:
     problems = []
-    p = Path(".claude/settings.json")
-    if p.exists():
+    for p in (Path(".claude/settings.json"), Path(".claude/settings.local.json")):
+        if not p.exists() or (p.name.endswith("local.json") and not git("ls-files", str(p)).strip()):
+            continue
         cfg = json.loads(p.read_text(encoding="utf-8"))
-        deny = " ".join(cfg.get("permissions", {}).get("deny", []))
-        for d in REQUIRED_DENY:
-            if d not in deny:
-                problems.append(f".claude/settings.json: Red Zone deny for '{d}' is missing.")
-        hooks = json.dumps(cfg.get("hooks", {}))
-        for h in REQUIRED_HOOKS:
-            if h not in hooks:
-                problems.append(f".claude/settings.json: hook {h} is not registered.")
+        for rule in cfg.get("permissions", {}).get("allow", []):
+            if any(r in rule for r in RISKY_ALLOW):
+                problems.append(f"{p}: allow rule \"{rule}\" opens a Red Zone action. Remove it.")
+        if cfg.get("disableAllHooks"):
+            problems.append(f"{p}: disableAllHooks turns off the guard. Remove it.")
+        if cfg.get("permissions", {}).get("defaultMode") == "bypassPermissions":
+            problems.append(f"{p}: defaultMode bypassPermissions in a shared file. Remove it.")
     o = Path("opencode.json")
     if o.exists():
         bash = json.loads(o.read_text(encoding="utf-8")).get("permission", {}).get("bash", {})
-        for d in ("git reset*", "rm -rf*", "git push --force*"):
-            if bash.get(d) != "deny":
-                problems.append(f"opencode.json: '{d}' must be 'deny'.")
-    if not p.exists() and not o.exists():
-        problems.append("no agent settings: run ./harness.sh install.")
+        if isinstance(bash, dict):
+            for pattern, value in bash.items():
+                if value == "allow" and any(r in pattern for r in ("git reset", "rm -rf", "git push --force")):
+                    problems.append(f"opencode.json: bash \"{pattern}\" is allow. Use deny or ask.")
     return report("check-zones", problems)
 
 
@@ -205,7 +191,7 @@ def lock() -> int:
 
 def integrity() -> int:
     if not LOCK.exists():
-        return report("check-harness-integrity", ["harness.lock is missing. Run ./harness.sh lock after review."])
+        return report("check-harness-integrity", [], "no harness.lock, skipped (install --project --lock to use it)")
     want = json.loads(LOCK.read_text(encoding="utf-8"))
     have = {str(p).replace("\\", "/"): digest(p) for p in guarded_files()}
     problems = [f"{f}: changed without review (harness.lock differs)." for f in sorted(set(want) | set(have))
@@ -215,7 +201,7 @@ def integrity() -> int:
 
 GATES = {
     "forbidden-files": forbidden_files, "large-files": large_files, "conflict-markers": conflict_markers,
-    "test-weakening": test_weakening, "changelog": changelog, "adr-fields": adr_fields, "adr-links": adr_links,
+    "test-weakening": test_weakening, "adr-fields": adr_fields, "adr-links": adr_links,
     "zones": zones, "integrity": integrity, "lock": lock,
 }
 

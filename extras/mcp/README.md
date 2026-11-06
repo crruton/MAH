@@ -15,13 +15,13 @@
 | `schema-store` (dialog-scenario-store) | `get_doc`, `propose_patch`, `apply_patch` | правку JSON, которая ломает его JSON Schema | `SCHEMA_MAP=папка:схема` |
 | `readonly-view` (rtp-core-readonly) | `list_files`, `read_file` | любую запись в ядро: у сервера нет пишущих инструментов | `READONLY_ROOT=core` |
 | `slot-scheduler` (gpu-scheduler) | `request_slot`, `renew_slot`, `release_slot`, `query_queue_position` | GPU, слот провайдера LLM или лицензию без аренды | `SLOTS=gpu:2,llm:8` |
-| `redteam-runner` (adversarial-runner) | `list_scenarios`, `run_scenario`, `run_all` | ничего — атакует 27 барьеров на временном репозитории | `HARNESS_KIT` |
+| `redteam-runner` (adversarial-runner) | `list_scenarios`, `run_scenario`, `run_all` | ничего — атакует 25 барьеров на временном репозитории | `HARNESS_KIT` |
 
 `test-env-broker` и `slot-scheduler` — это и есть Resource Reservation Manager в миниатюре: аренда с TTL, heartbeat (`renew_*`), очередь FIFO и автоматический возврат просроченных аренд.
 
 ## Установка
 
-`./harness.sh install <repo>` копирует серверы в `<repo>/.harness/mcp/` и создаёт `<repo>/.mcp.json` (формат Claude Code) со всеми десятью. Дальше:
+Серверы не ставятся по умолчанию. Скопируйте нужные в `<repo>/.harness/mcp/` (см. [../README.md](../README.md)) и добавьте их записи из `mcp.json` в `<repo>/.mcp.json`. Дальше:
 
 ```bash
 pip install -r .harness/mcp/requirements.txt
@@ -38,12 +38,12 @@ pip install -r .harness/mcp/requirements.txt
 ## Проверка
 
 ```bash
-pip install -r mcp/requirements.txt
-python mcp/selftest.py
+pip install -r extras/mcp/requirements.txt
+python extras/mcp/selftest.py
 ```
 
 Self-test для каждого сервера:
 1. поднимает его по stdio и делает `initialize` + `tools/list` по протоколу MCP;
-2. вызывает инструменты на временном репозитории и проверяет поведение: аренда и очередь, отказ в Red Zone и за пределами репозитория, маски для персональных данных, отказ невалидному JSON, 27 атак `redteam-runner`.
+2. вызывает инструменты на временном репозитории и проверяет поведение: аренда и очередь, отказ в Red Zone и за пределами репозитория, маски для персональных данных, отказ невалидному JSON, 25 атак `redteam-runner`.
 
 CI прогоняет self-test на `mcp<2` и `mcp>=2`.

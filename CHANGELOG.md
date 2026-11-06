@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0] - 2026-11-06
+
+### Changed
+- Global install by default: once per machine, all projects, nothing copied into repositories. `./harness.sh install` adds two hook entries to ~/.claude/settings.json (backup first, other hooks stay), 5 process skills, the error store. `./harness.sh uninstall` restores the file.
+- guard.sh has three levels: deny only what git cannot bring back (reset --hard, clean -f, checkout -- ., force push, rm -rf of /, ~, ., .git, secret files), ask for branch -D, DROP/TRUNCATE, docker prune and a full test run, allow all other actions. `docker compose down -v` and `rm -rf build` pass.
+- The error store is global (~/.claude/harness/errors) with the field "repo". Statistics show all projects, questions to the human and a per-project table. `--team-store` keeps a shared store in a repository.
+- Project mode is optional: `./harness.sh project <repo>` for git hooks and 13 CI gates. check-zones now catches project settings that open Red Zone actions or turn off hooks. check-harness-integrity is used only with `--lock`.
+- The demo runs 25 attacks and 8 normal actions. A false positive fails the demo. A failure that is not from a barrier shows DEMO ERROR.
+- Cost: about 160 tokens per session and 110 ms per tool call.
+
+### Removed
+- check-changelog (B12).
+- Profiles core/full and the `start` command.
+
+### Moved to extras/
+- 10 MCP servers, 10 domain skills, the k6 load test, check-large-files (HARNESS_EXTRA).
+
 ## [0.4.0] - 2026-11-06
 
 ### Added

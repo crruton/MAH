@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Error statistics: events from the error store and incidents from error.md.
 
-  errors.py [--repo PATH] [--out docs/errors.md] [--json] [--suggest] [--weeks N]
+  errors.py [--repo PATH] [--project NAME] [--out FILE] [--json] [--suggest] [--weeks N]
+
+Stores: the global store (~/.claude/harness/errors, all projects) and <repo>/.harness/errors
+when it exists. --project limits the events to one repository name.
 
 Report sections:
-  1. Summary: events, blocked actions, agent share, open incidents.
-  2. Barriers: how often each barrier fired. Each block is an error that did not reach the code.
+  1. Summary: events, blocked actions, questions to the human, agent share, open incidents.
+  2. Barriers: how often each barrier blocked or asked. Each block is an error that did not
+     reach the code. Each question is a cost for the human: a barrier that asks often and the
+     human always says yes is a false positive. Move it to allow.
   3. Weekly trend by source.
   4. Repeats: the same barrier and the same normalized detail 3+ times in 7 days.
      A repeat is a candidate for an incident: the barrier stops the error, but the agent
@@ -25,7 +30,7 @@ NAMES = {
     "B01": "pre-push: main", "B02": "pre-push: force push", "B03": "commit-msg", "B04": "guard-tests",
     "B05": "guard-destructive", "B06": "guard-secrets", "B07": "check-secrets", "B08": "check-forbidden-files",
     "B09": "check-large-files", "B10": "check-conflict-markers", "B11": "check-test-weakening",
-    "B12": "check-changelog", "B13": "check-adr-numbers", "B14": "check-adr-fields", "B15": "check-adr-links",
+    "B12": "check-changelog (retired)", "B13": "check-adr-numbers", "B14": "check-adr-fields", "B15": "check-adr-links",
     "B16": "check-error-log", "B17": "check-rules-size", "B18": "check-ste", "B19": "check-zones",
     "B20": "check-harness-integrity", "B21": "regex across lines", "B22": "bare bash in subprocess",
     "B23": "stdio closed before reply", "B24": "dependency without major bound", "B25": "text without encoding",
@@ -33,9 +38,21 @@ NAMES = {
 }
 
 
-def load_events(repo: Path):
+def store_dirs(repo: Path):
+    import os
+    home = os.environ.get("HARNESS_HOME") or os.path.join(
+        os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "harness")
+    dirs = [Path(home) / "errors", repo / ".harness" / "errors"]
     out = []
-    for f in sorted((repo / ".harness" / "errors").glob("events-*.jsonl")):
+    for d in dirs:
+        if d.is_dir() and d.resolve() not in [x.resolve() for x in out]:
+            out.append(d)
+    return out
+
+
+def load_events(dirs):
+    out = []
+    for f in sorted(x for d in dirs for x in d.glob("events-*.jsonl")):
         for line in f.read_text(encoding="utf-8").splitlines():
             try:
                 e = json.loads(line)
@@ -80,14 +97,19 @@ def norm(detail: str) -> str:
     return re.sub(r"\d+|[0-9a-f]{7,}", "#", detail.lower())[:80]
 
 
-def build(repo: Path, weeks: int):
-    ev = load_events(repo)
+def build(repo: Path, weeks: int, project: str = ""):
+    ev = load_events(store_dirs(repo))
+    if project:
+        ev = [e for e in ev if e.get("repo") == project]
     inc = load_incidents(repo)
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     blocked = [e for e in ev if e.get("outcome") in ("blocked", "failed")]
+    asked = [e for e in ev if e.get("outcome") == "asked"]
     by_barrier = collections.Counter(e.get("barrier") or e.get("name") for e in blocked)
+    by_ask = collections.Counter(e.get("barrier") or e.get("name") for e in asked)
+    by_repo = collections.Counter(e.get("repo") or "(no repo)" for e in ev)
     last = {}
-    for e in blocked:
+    for e in blocked + asked:
         k = e.get("barrier") or e.get("name")
         last[k] = max(last.get(k, e["_ts"]), e["_ts"])
     wk = collections.defaultdict(collections.Counter)
@@ -102,10 +124,11 @@ def build(repo: Path, weeks: int):
     closed = [i for i in inc if i["status"] == "closed"]
     enforced = [i for i in closed if i["level"] in ("os", "server", "hook")]
     return {
-        "events": ev, "incidents": inc, "blocked": blocked, "by_barrier": by_barrier, "last": last,
+        "events": ev, "incidents": inc, "blocked": blocked, "by_barrier": by_barrier, "by_ask": by_ask,
+        "by_repo": by_repo, "last": last,
         "weekly": dict(sorted(wk.items())), "repeats": repeats,
         "summary": {
-            "events": len(ev), "blocked": len(blocked),
+            "events": len(ev), "blocked": len(blocked), "asked": len(asked), "repos": len(by_repo),
             "agent_share": round(100 * sum(1 for e in ev if e.get("actor") == "agent") / len(ev)) if ev else 0,
             "tool_errors": sum(1 for e in ev if e.get("outcome") == "tool-error"),
             "incidents": len(inc), "open": len(inc) - len(closed),
@@ -123,19 +146,25 @@ def markdown(r) -> str:
     lines = [
         "# Статистика ошибок агентов", "",
         f"Обновлено: {dt.date.today()}. Команда: `./harness.sh errors .`", "",
-        "| Событий | Заблокировано барьерами | Доля агента | Ошибок инструментов | Инцидентов | Открытых | Enforcement Ratio |",
-        "|---|---|---|---|---|---|---|",
-        f"| {s['events']} | {s['blocked']} | {s['agent_share']}% | {s['tool_errors']} | {s['incidents']} | {s['open']} | {s['enforcement_ratio']}% |",
+        "| Событий | Проектов | Заблокировано | Вопросов человеку | Доля агента | Ошибок инструментов | Инцидентов | Открытых | Enforcement Ratio |",
+        "|---|---|---|---|---|---|---|---|---|",
+        f"| {s['events']} | {s['repos']} | {s['blocked']} | {s['asked']} | {s['agent_share']}% | {s['tool_errors']} | {s['incidents']} | {s['open']} | {s['enforcement_ratio']}% |",
         "", "Enforcement Ratio — доля закрытых инцидентов, у которых барьер на уровне хука, сервера или ОС, а не текста.", "",
         "## Барьеры", "",
-        "Каждое срабатывание — ошибка, которая не дошла до кода.", "",
-        "| Барьер | Что | Срабатываний | | Последнее |", "|---|---|---|---|---|",
+        "Блок — ошибка, которая не дошла до кода. Вопрос — цена для человека: барьер, который часто спрашивает, "
+        "а человек всегда разрешает, — ложное срабатывание, его надо ослабить.", "",
+        "| Барьер | Что | Блоков | Вопросов | | Последнее |", "|---|---|---|---|---|---|",
     ]
-    top = max(r["by_barrier"].values(), default=1)
-    for k, n in r["by_barrier"].most_common():
-        lines.append(f"| {k} | {NAMES.get(k, '')} | {n} | {bar(n, top)} | {r['last'][k]:%Y-%m-%d} |")
-    if not r["by_barrier"]:
-        lines.append("| — | событий пока нет | 0 | | |")
+    keys = set(r["by_barrier"]) | set(r["by_ask"])
+    top = max([r["by_barrier"][k] + r["by_ask"][k] for k in keys] or [1])
+    for k in sorted(keys, key=lambda k: -(r["by_barrier"][k] + r["by_ask"][k])):
+        n, q = r["by_barrier"][k], r["by_ask"][k]
+        lines.append(f"| {k} | {NAMES.get(k, '')} | {n} | {q} | {bar(n + q, top)} | {r['last'][k]:%Y-%m-%d} |")
+    if not keys:
+        lines.append("| — | событий пока нет | 0 | 0 | | |")
+    if len(r["by_repo"]) > 1:
+        lines += ["", "## По проектам", "", "| Проект | Событий |", "|---|---|"]
+        lines += [f"| {k} | {v} |" for k, v in r["by_repo"].most_common()]
     lines += ["", "## По неделям", "", "| Неделя | hook | git-hook | gate | tool | manual | Всего |", "|---|---|---|---|---|---|---|"]
     for w, c in r["weekly"].items():
         lines.append(f"| {w} | {c['hook']} | {c['git-hook']} | {c['gate']} | {c['tool']} | {c['manual']} | {sum(c.values())} |")
@@ -169,11 +198,12 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--suggest", action="store_true")
     ap.add_argument("--weeks", type=int, default=12)
+    ap.add_argument("--project", default="")
     a = ap.parse_args()
     repo = Path(a.repo).resolve()
-    r = build(repo, a.weeks)
+    r = build(repo, a.weeks, a.project)
     if a.json:
-        print(json.dumps({"summary": r["summary"], "by_barrier": r["by_barrier"],
+        print(json.dumps({"summary": r["summary"], "by_barrier": r["by_barrier"], "by_ask": r["by_ask"], "by_repo": r["by_repo"],
                           "weekly": {w: dict(c) for w, c in r["weekly"].items()},
                           "repeats": [{"barrier": b, "count": len(v)} for (b, _), v in r["repeats"].items()]},
                          ensure_ascii=False, indent=2))

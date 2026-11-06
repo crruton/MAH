@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Error collector: append one event to the error store.
 
-Store: <repo>/.harness/errors/events-YYYY-MM-<author>.jsonl
-  One JSON object per line. One file per author and month, so files merge in git
-  without conflicts and the team gets shared statistics. Commit the folder.
+Store (first that applies):
+  1. HARNESS_ERRORS_DIR
+  2. <repo>/.harness/errors/ when the repository has this folder (project mode: the team
+     commits the folder and gets shared statistics; one file per author and month merges
+     in git without conflicts)
+  3. ~/.claude/harness/errors/ (global mode, default): one store for all projects.
+     Each event has the field "repo".
+File: events-YYYY-MM-<author>.jsonl, one JSON object per line.
 Sources: hook (agent hooks), git-hook, gate (local or CI), tool (failed agent tool call), manual.
+Outcomes: blocked (deny), asked (the hook asked the human), failed (gate), tool-error, incident.
 Secrets and personal data in `detail` are masked before the write.
 The collector never fails the caller: errors in the collector are ignored.
 
@@ -59,8 +65,11 @@ def runtime() -> str:
 def store_dir() -> Path:
     if os.environ.get("HARNESS_ERRORS_DIR"):
         return Path(os.environ["HARNESS_ERRORS_DIR"])
-    root = _git("rev-parse", "--show-toplevel") or os.getcwd()
-    return Path(root) / ".harness" / "errors"
+    root = _git("rev-parse", "--show-toplevel")
+    if root and (Path(root) / ".harness" / "errors").is_dir():
+        return Path(root) / ".harness" / "errors"
+    home = os.environ.get("HARNESS_HOME") or os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude"), "harness")
+    return Path(home) / "errors"
 
 
 def author() -> str:
@@ -86,6 +95,7 @@ def record(source: str, barrier: str = "", name: str = "", outcome: str = "block
             "outcome": outcome,
             "actor": actor or ("agent" if source in ("hook", "tool") or rt in ("claude-code", "opencode") else "human"),
             "runtime": rt,
+            "repo": os.path.basename(_git("rev-parse", "--show-toplevel")) or "",
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
             "commit": _git("rev-parse", "--short", "HEAD"),
             "session": session[:64],
@@ -105,7 +115,7 @@ def main() -> int:
     ap.add_argument("--source", required=True, choices=["hook", "git-hook", "gate", "tool", "manual"])
     ap.add_argument("--barrier", default="")
     ap.add_argument("--name", default="")
-    ap.add_argument("--outcome", default="blocked", choices=["blocked", "failed", "tool-error", "incident"])
+    ap.add_argument("--outcome", default="blocked", choices=["blocked", "asked", "failed", "tool-error", "incident"])
     ap.add_argument("--session", default="")
     ap.add_argument("--actor", default="")
     ap.add_argument("--detail", default="")
