@@ -2,13 +2,13 @@
 
 Лёгкий харнес для ИИ-агентов разработки. Ставится **один раз на машину** и работает во всех проектах: в репозитории ничего не копируется. Ловит действия, после которых работу не вернуть, считает ошибки агентов по всем проектам и показывает, сколько стоит сам.
 
-*A lightweight, project-independent harness for AI coding agents (Claude Code). One global install: a guard hook (deny only what git cannot bring back, ask for the rest, allow everything else), an error collector with cross-project statistics, 5 process skills. ~160 tokens per session, ~110 ms per tool call. Optional CI gates for teams. Docs are in Russian. MIT.*
+*A lightweight, project-independent harness for AI coding agents (Claude Code). One global install: a guard hook (deny only what git cannot bring back, ask for the rest, allow everything else), an error collector with cross-project statistics, a learning dashboard, 5 process skills. ~160 tokens per session, ~110 ms per tool call. Optional CI gates for teams. Docs are in Russian. MIT.*
 
 ```bash
 git clone https://github.com/crruton/self-harness.git
 cd self-harness
 ./harness.sh install      # Windows: harness.cmd install  (нужен Git for Windows и jq)
-./harness.sh demo         # 25 атак должны остановиться, 8 обычных действий — пройти
+./harness.sh demo         # 35 атак должны остановиться, 16 обычных действий — пройти
 ```
 
 Удалить: `./harness.sh uninstall`. Ваши настройки, хуки и скиллы остаются как были.
@@ -19,7 +19,7 @@ cd self-harness
 
 | Что | Куда | Стоимость |
 |---|---|---|
-| `guard.sh` — барьеры B04–B06 | `~/.claude/harness/hooks/`, запись PreToolUse в `settings.json` | ~70 мс на вызов инструмента |
+| `guard.sh` — барьеры B04–B06, B28–B33 | `~/.claude/harness/hooks/`, запись PreToolUse в `settings.json` | ~70 мс на вызов инструмента |
 | `collect-tool-errors.sh` — сборщик упавших вызовов | запись PostToolUse (выключить: `--no-tool-errors`) | ~40 мс на вызов, `jq` только при ошибке |
 | 5 процессных скиллов | `~/.claude/skills/` | ~160 токенов в сессии (только описания) |
 | Хранилище и статистика ошибок | `~/.claude/harness/errors/`, `bin/` | 0 |
@@ -35,13 +35,13 @@ cd self-harness
 
 | Уровень | Что | Почему |
 |---|---|---|
-| **Запретить** | `git reset --hard`, `git clean -f`, `git checkout -- .`, `git restore .`, force-push (в том числе `--force-with-lease`), удаление ветки на сервере, `rm -rf` для `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`; чтение и правка `.env`, ключей, сертификатов, `secrets/` | теряется незакоммиченная работа или чужая история; секреты не должны попадать в контекст модели |
-| **Спросить** | `git branch -D`, `DROP`/`TRUNCATE`, `docker system/volume prune`, полный прогон тестов | бывает нужно, но надо подтвердить, что это тестовая среда или осознанный полный прогон |
-| **Пропустить** | всё остальное: `rm -rf build`, `docker compose down -v`, `git push origin dev`, тесты пакета, `.env.example` | обычная работа |
+| **Запретить** | B05: `git reset --hard`, `git clean -f`, `git checkout -- .`, `git restore .`, force-push (в том числе `--force-with-lease`), удаление ветки на сервере, `rm -rf` для `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`; B06: чтение и правка `.env`, ключей, сертификатов, `secrets/`; B28: `--no-verify`, `HUSKY=0`; B31: хранилища токенов (`~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `.git-credentials`, `.netrc`, `~/.ssh/id_*`); B32: ручная правка lock-файлов и `node_modules/`, `.venv/` | теряется незакоммиченная работа или чужая история; хук нашёл проблему, а агент её обходит; секреты не должны попадать в контекст модели; lock-файл расходится со сборкой |
+| **Спросить** | B04: полный прогон тестов (npm, pytest, go, cargo, maven, gradle, dotnet, rspec, phpunit, mix, swift, flutter, deno, ctest, make test); B05: `git branch -D`, `DROP`/`TRUNCATE`, `docker system/volume prune`; B29: `curl … \| sh`; B30: `npm publish`, `docker push`, `terraform apply`, `kubectl delete`, `helm upgrade`, деплой; B31: `env`, `printenv`, `echo $…TOKEN`; B33: правка хуков и настроек агента | бывает нужно, но действие уходит за пределы машины, открывает секреты или меняет защиту самого агента |
+| **Пропустить** | всё остальное: `rm -rf build`, `docker compose down -v`, `git push origin dev`, `git push -n`, тесты пакета, `terraform plan`, `curl … \| jq`, `printenv PATH`, `.env.example`, `*.pub` | обычная работа |
 
 Проверки видят команду и внутри обёрток: `sh -c '…'`, `bash -c`, `python -c`. «Спросить» — это ответ хука `permissionDecision: "ask"` в Claude Code: агент не упирается в стену, человек решает одним нажатием. Полный прогон тестов без вопроса: `CLAUDE_FULL_TESTS=1 <команда>`.
 
-Демо проверяет обе стороны: 25 атак должны остановиться и 8 обычных действий должны пройти без вопроса. Ложное срабатывание проваливает демо так же, как пропущенная атака.
+Демо проверяет обе стороны: 35 атак должны остановиться и 16 обычных действий должны пройти без вопроса. Ложное срабатывание проваливает демо так же, как пропущенная атака.
 
 ## Сборщик и статистика ошибок
 
@@ -49,7 +49,7 @@ cd self-harness
 
 | Источник | Что попадает |
 |---|---|
-| `hook` | заблокированное или спрошенное действие агента (B04–B06) |
+| `hook` | заблокированное или спрошенное действие агента (B04–B06, B28–B33) |
 | `tool` | упавший вызов инструмента агента: команда и ошибка |
 | `git-hook`, `gate` | срабатывания git-хуков и гейтов CI (проектный режим) |
 | `manual` | инцидент `./harness.sh incident` |
@@ -69,6 +69,16 @@ cd self-harness
 | Инциденты по уровню барьера | много «текст» — правила не проверяются машиной |
 
 Пример — ошибки агента, который собирал этот репозиторий: [error.md](error.md) и [docs/errors.md](docs/errors.md).
+
+## Петля самосовершенствования и дашборд
+
+Модель между сессиями не учится, учится среда. Ошибка проходит шесть шагов: поймать → заметить → записать в `error.md` → запретить барьером с атакой-репро в демо → научить (сообщение барьера и строка правила) → проверить. Подробно — [docs/LOOP.md](docs/LOOP.md).
+
+```bash
+./harness.sh dashboard     # ~/.claude/harness/dashboard.html
+```
+
+Дашборд отвечает на вопрос «агент становится лучше?» цифрами за последние 4 недели против 4 предыдущих: ошибки инструментов и попытки запрещённого на 100 вызовов, токены, USD и активное время на сессию, вопросы человеку. Для каждого инцидента — что стало после барьера: «агент не пытается», «барьер держит, агент пытается» или «утечка». Отдельно — ошибки, остановленные до первого инцидента, новые варианты, которые барьеры поймали без подсказки, и кандидаты в следующие барьеры. Знаменатель берётся из журналов сессий Claude Code, поэтому хуки на успешных вызовах ничего не стоят.
 
 ## 5 скиллов
 
@@ -90,7 +100,7 @@ cd self-harness
 ./harness.sh project <repo> [--team-store] [--lock]
 ```
 
-Ставит `.githooks/` (B01–B03), `gates/` (13 гейтов), `error.md`, каталог ADR, шаблон MR. `--team-store` — общее хранилище ошибок `.harness/errors/` в репозитории (файл на автора и месяц, сливается в git без конфликтов). `--lock` — `harness.lock`: правка хуков и гейтов не пройдёт CI без ревью.
+Ставит `.githooks/` (B01–B03), `gates/` (17 гейтов), `error.md`, каталог ADR, шаблон MR. `--team-store` — общее хранилище ошибок `.harness/errors/` в репозитории (файл на автора и месяц, сливается в git без конфликтов). `--lock` — `harness.lock`: правка хуков и гейтов не пройдёт CI без ревью.
 
 | ID | Барьер | Что ловит |
 |---|---|---|
@@ -99,7 +109,11 @@ cd self-harness
 | B07 | `check-secrets` | ключи AWS/GitHub/GitLab/Slack, JWT, приватные ключи, пароли в коде |
 | B08 | `check-forbidden-files` | `.env`, `*.pem`, `id_rsa` в git |
 | B10 | `check-conflict-markers` | забытые `<<<<<<<` |
-| B11 | `check-test-weakening` | добавлен `skip`/`.only`, удалены assert |
+| B11 | `check-test-weakening` | добавлен `skip`/`.only`/`#[ignore]`, удалены assert |
+| B34 | `check-test-deletion` | удалён тестовый файл или тест-функция |
+| B35 | `check-suppressions` | новый `eslint-disable`, `@ts-ignore`, `# noqa`, `//nolint`, `#[allow]`… без причины на той же строке |
+| B36 | `check-leftovers` | `// ... rest of the code unchanged` вместо кода, `todo!()`, `debugger`, `pdb.set_trace()`, `binding.pry` |
+| B37 | `check-lockfile-sync` | в манифесте изменились зависимости, а lock-файл нет (npm, yarn, pnpm, poetry, uv, cargo, go, bundler, composer, mix, pub) |
 | B13–B15 | `check-adr-*` | дубли номеров, пустые поля, ссылки на несуществующие ADR |
 | B16 | `check-error-log` | инцидент закрыт без барьера и репро-теста |
 | B17 | `check-rules-size` | AGENTS.md длиннее 150 строк |
@@ -142,6 +156,7 @@ cd self-harness
 ./harness.sh demo [Bnn]
 ./harness.sh errors [--project NAME] [--suggest]
 ./harness.sh budget [--repo PATH]
+./harness.sh dashboard [--repo PATH] [--json]
 ./harness.sh doctor
 ./harness.sh project <repo> [--team-store] [--lock]
 ./harness.sh check | lock | metrics <repo>

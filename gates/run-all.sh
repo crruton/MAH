@@ -25,6 +25,10 @@ run check-error-log         "$py" "$here/check-error-log.py" error.md
 run check-rules-size        bash  "$here/check-rules-size.sh" 150 AGENTS.md CLAUDE.md
 run check-ste               "$py" "$here/check-ste.py"
 run check-portability       "$py" "$here/check-portability.py"
+run check-test-deletion     "$py" "$here/checks.py" test-deletion
+run check-suppressions      "$py" "$here/checks.py" suppressions
+run check-leftovers         "$py" "$here/checks.py" leftovers
+run check-lockfile-sync     "$py" "$here/checks.py" lockfile-sync
 run check-zones             "$py" "$here/checks.py" zones
 run check-harness-integrity "$py" "$here/checks.py" integrity
 case " ${HARNESS_EXTRA:-} " in *" check-large-files "*) run check-large-files "$py" "$here/checks.py" large-files ;; esac

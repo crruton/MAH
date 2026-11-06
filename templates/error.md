@@ -5,6 +5,7 @@ One entry is one incident. Add the entry in 24 hours. You can set `Status: close
 ## INC-2026-08-10-01: git reset --hard deleted uncommitted work
 - Date: 2026-08-10
 - Agent: backend-dev
+- Found by: human
 - Where: `<repository>`, task `<ID>`
 - Symptom: uncommitted changes to .gitignore and constitution.md were lost
 - Cause: the settings denied file writes, but the terminal stayed open
@@ -14,3 +15,4 @@ One entry is one incident. Add the entry in 24 hours. You can set `Status: close
 - Repro: `sh -c 'git reset --hard'` in the agent container fails with "Read-only file system"
 - ADR: -
 - Status: closed
+- Closed: 2026-08-10

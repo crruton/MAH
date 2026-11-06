@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash, Read, Edit, Write. Barriers B04, B05, B06 in one process.
+# PreToolUse hook for Bash, Read, Edit, MultiEdit, Write, NotebookEdit. Barriers B04-B06, B28-B33 in one process.
 #
 # Three levels, so the agent asks the human only when it matters:
-#   deny  (exit 2)  the action destroys work that git cannot bring back:
-#                   git reset --hard, git clean -f, git checkout -- ., force push,
-#                   rm -rf of /, ~, $HOME, ., .., *, .git; read or change of secret files
+#   deny  (exit 2)  the action destroys work that git cannot bring back, hides a problem, or leaks a secret:
+#                   B05 git reset --hard, git clean -f, git checkout -- ., force push, rm -rf of /, ~, ., .git
+#                   B06 secret files   B28 --no-verify, HUSKY=0   B31 credential stores (~/.aws, ~/.kube, ...)
+#                   B32 hand edit of lock files and installed packages
 #   ask             the action can be correct but needs a human:
-#                   git branch -D, DROP/TRUNCATE, docker system|volume prune, a full test run
+#                   B04 a full test run   B05 git branch -D, DROP/TRUNCATE, docker prune
+#                   B29 curl | sh   B30 publish, deploy, terraform apply, kubectl delete
+#                   B31 env dump    B33 change of hooks and agent settings
 #   allow           all other actions, for example rm -rf build, docker compose down -v
 #
 # Speed: one jq call and bash regex. About 70-130 ms on Windows, see ./harness.sh budget.
 # Requires jq. Without jq the hook allows all actions (it never breaks the agent).
 
 command -v jq >/dev/null 2>&1 || exit 0
-IFS=$'\t' read -r tool cmd path session < <(jq -r '[.tool_name // "", .tool_input.command // "",
-  (.tool_input.file_path // .tool_input.path // ""), .session_id // ""] | @tsv')
+# Unit separator, not a tab: read collapses empty fields when IFS is whitespace. Windows paths get "/".
+IFS=$'\x1f' read -r tool cmd path session < <(jq -r '[.tool_name // "", (.tool_input.command // "" | gsub("[\n\u001f]"; " ")),
+  (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // "" | gsub("\\\\"; "/")), .session_id // ""] | join("\u001f")')
 
 HH="${HARNESS_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/harness}"
 log() { # log <barrier> <name> <outcome> <detail>
@@ -45,6 +49,24 @@ for target in "$path" "$cmd"; do
   done
 done
 
+# B31 deny: credential stores of tools (cloud, registries, git, kube, ssh keys)
+CRED='(\.aws/credentials|(^|[/[:space:]])[._]netrc|\.git-credentials|\.docker/config\.json|\.kube/config|\.config/gh/hosts\.yml|\.ssh/id_[a-z0-9]+([^.a-z0-9]|$)|\.pgpass|\.vault-token|credentials\.tfrc\.json|\.config/gcloud/(credentials|application_default))'
+for target in "${path//\\//}" "${cmd//\\//}"; do
+  [ -n "$target" ] && [[ $target =~ $CRED ]] && deny B31 guard-credentials "${BASH_REMATCH[1]} is a credential store. Agents do not read tokens. Ask the human for a scoped token in an environment variable." "$tool $target"
+done
+
+case "$tool" in Edit|MultiEdit|Write|NotebookEdit)
+  p="${path//\\//}"
+  # B32 deny: lock files and installed packages are generated. A hand edit makes the build differ from the lock.
+  LOCKF='(^|/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|uv\.lock|Pipfile\.lock|pdm\.lock|Cargo\.lock|go\.sum|composer\.lock|Gemfile\.lock|mix\.lock|pubspec\.lock|Podfile\.lock|packages\.lock\.json|gradle\.lockfile)$'
+  GEN='(^|/)(node_modules|\.venv|venv|site-packages|__pycache__|Pods|\.gradle)/'
+  [[ $p =~ $LOCKF || $p =~ $GEN ]] && deny B32 guard-generated "${p##*/} is generated. Change the manifest and run the package manager (npm install, poetry lock, go mod tidy, cargo update)." "$tool $p"
+  # B33 ask: the agent changes its own guard: hooks, agent settings, the harness lock
+  SELF='(^|/)\.claude/settings(\.local)?\.json$|/harness/hooks/|(^|/)\.githooks/|(^|/)\.git/hooks/|(^|/)\.husky/|(^|/)\.git/config$|(^|/)harness\.lock$|(^|/)opencode\.json$|(^|/)lefthook\.ya?ml$|(^|/)\.pre-commit-config\.yaml$'
+  [[ $p =~ $SELF ]] && ask B33 guard-self "this file controls the guards of the agent. Confirm that you asked for this change" "$tool $p"
+  exit 0 ;;
+esac
+
 [ "$tool" = "Bash" ] && [ -n "$cmd" ] || exit 0
 flat=" ${cmd//[\"\']/ } "
 S='[[:space:]]'
@@ -55,6 +77,52 @@ DENY+="|git$S+push$S(.*$S)?(--force[^[:space:]]*|-f|--delete|-d|:[^[:space:]]+)(
 DENY+="|rm$S+(-[a-zA-Z]*$S+)*-[a-zA-Z]*(rf|fr|Rf|fR)[a-zA-Z]*$S+(-[a-zA-Z]+$S+)*(/|/\*|~|~/|\\\$HOME|\.|\./|\.\.|\.\./?\*?|\*|\.git/?)($S|;|&|$)"
 if [[ $flat =~ $DENY ]]; then
   deny B05 guard-destructive "\"${BASH_REMATCH[0]# }\" destroys work that git cannot bring back. Ask the human to run it." "$cmd"
+fi
+
+# B28 deny: skip of the git hooks. The hook found a problem: fix it, do not go around it.
+BYPASS="git$S+(-c$S+[^[:space:]]+$S+)*(commit|push|merge|rebase|am)$S(.*$S)?(--no-verify|-n)($S|$)|(^|$S)(HUSKY=0|HUSKY_SKIP_HOOKS=1|LEFTHOOK=0|SKIP_HOOKS=1)$S"
+DRYRUN="git$S+push$S(.*$S)?-n($S|$)"   # git push -n is a dry run, not a skip of hooks
+if [[ $flat =~ $BYPASS ]]; then
+  m=${BASH_REMATCH[0]# }; m=${m% }
+  [[ $flat =~ $DRYRUN && ! $flat =~ --no-verify ]] || deny B28 guard-bypass "\"$m\" skips the git hooks. Fix the problem that the hook reports." "$cmd"
+fi
+
+# B32 deny: a lock file changed by a text tool
+WRITE="(sed$S+-i|perl$S+-pi|[>]|tee$S)"
+LOCKB="$WRITE[^;&|]*(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|uv\.lock|Cargo\.lock|go\.sum|composer\.lock|Gemfile\.lock)($S|$)"
+if [[ $flat =~ $LOCKB ]]; then
+  deny B32 guard-generated "${BASH_REMATCH[2]} is generated. Run the package manager." "$cmd"
+fi
+
+# B29 ask: a script from the network goes straight into an interpreter
+REMOTE="(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)$S[^|]*\|$S*(sudo$S+)?(ba|z|da|k)?sh|(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)$S[^|]*\|$S*(sudo$S+)?(python3?|node|perl|ruby|iex|Invoke-Expression)($S|$)"
+REMOTE+="|(ba|z)?sh$S+<\($S*(curl|wget)|\\\$\($S*(curl|wget)$S"
+if [[ $flat =~ $REMOTE ]]; then
+  ask B29 guard-remote-exec "a script from the network runs with no review. Download it, read it, then run it" "$cmd"
+fi
+
+# B30 ask: the action leaves the machine: publish a package or an image, change real infrastructure
+PUB="(npm|pnpm|yarn|bun)$S+publish|cargo$S+publish|twine$S+upload|gem$S+push|(poetry|uv|flit|hatch)$S+publish|dotnet$S+nuget$S+push|mvn$S+([^[:space:]]+$S+)*deploy($S|$)"
+PUB+="|(\./)?gradlew?$S+([^[:space:]]+$S+)*publish|docker$S+(image$S+)?push|gh$S+release$S+create|git$S+push$S(.*$S)?--tags"
+PUB+="|(terraform|tofu)$S+(apply|destroy)|pulumi$S+(up|destroy)|kubectl$S+(delete|apply|replace|scale|drain|patch|rollout$S+restart)|helm$S+(install|upgrade|uninstall|delete|rollback)"
+PUB+="|(vercel|netlify)$S+(.*$S)?--prod|(fly|flyctl|firebase|serverless|sls|wrangler)$S+deploy|aws$S+[a-z0-9-]+$S+(delete|terminate|remove)-"
+if [[ $flat =~ $PUB ]]; then
+  ask B30 guard-publish "\"${BASH_REMATCH[0]# }\" changes a system outside this machine. Confirm the target" "$cmd"
+fi
+
+# B31 ask: a dump of the environment puts every token of the session into the context
+ENVDUMP="(^|[;&|]$S*)(env|printenv|set|export$S+-p|Get-ChildItem$S+env:)$S*($|[;&|])"
+ENVSECRET="(echo|printf|printenv)[^;&|]*(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)"
+if [[ $cmd =~ $ENVDUMP || $cmd =~ $ENVSECRET ]]; then
+  ask B31 guard-credentials "the command prints secrets from the environment into the context. Print only the variable names" "$cmd"
+fi
+
+# B33 ask: the agent changes its own guard from the shell
+SELFB="(\.claude/settings(\.local)?\.json|/harness/hooks/|\.githooks/|\.git/hooks/|\.husky/|harness\.lock)"
+SELFW="(sed$S+-i|[>]|tee$S|(^|$S)(rm|mv|cp|chmod|truncate)$S)"
+HOOKCFG="core\.hooksPath|disableAllHooks"
+if [[ $flat =~ $HOOKCFG ]] || { [[ $flat =~ $SELFB ]] && [[ $flat =~ $SELFW ]]; }; then
+  ask B33 guard-self "the command changes the guards of the agent. Confirm that you asked for this change" "$cmd"
 fi
 
 # B05 ask: correct in some tasks, dangerous in others
@@ -68,7 +136,7 @@ shopt -u nocasematch
 
 # B04 ask: full test suite (each segment of && ; || | chains). CLAUDE_FULL_TESTS=1 allows it.
 if [ "${CLAUDE_FULL_TESTS:-}" != "1" ] && ! [[ $cmd == *CLAUDE_FULL_TESTS=1* ]]; then
-  FULL='(^|&&|;|\|\||\|)[[:space:]]*((npm|pnpm|yarn|bun)( run)? test|npx (jest|vitest)( run)?|(jest|vitest)( run)?|pytest|python3? -m pytest|go test \./\.\.\.|cargo test|mvn test|(\./)?gradlew test)[[:space:]]*($|&&|;|\|)'
+  FULL='(^|&&|;|\|\||\|)[[:space:]]*((npm|pnpm|yarn|bun)( run)? test|npx (jest|vitest|mocha)( run)?|(jest|vitest|mocha)( run)?|pytest|python3? -m (pytest|unittest)|tox|nox|go test \./\.\.\.|cargo test|cargo nextest run|(mvn|\./mvnw) (clean )?(test|verify)|(\./)?gradlew? (clean )?(test|check)|dotnet test|(bundle exec )?(rspec|rake test|rails test)|(vendor/bin/|\./vendor/bin/)?(phpunit|pest)|mix test|swift test|flutter test|dart test|deno test|ctest|make (test|check))[[:space:]]*($|&&|;|\|)'
   [[ $cmd =~ $FULL ]] && ask B04 guard-tests "full test suite. Run the tests of the changed files, or confirm the full run" "$cmd"
 fi
 exit 0

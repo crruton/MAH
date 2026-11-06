@@ -4,9 +4,10 @@
 #   ./harness.sh                       menu
 #   ./harness.sh install [--rules]     global install: once per machine, all projects
 #   ./harness.sh uninstall [--purge]   remove the global install
-#   ./harness.sh demo [Bnn]            25 attacks and 8 normal actions on throwaway folders
+#   ./harness.sh demo [Bnn]            35 attacks and 16 normal actions on throwaway folders
 #   ./harness.sh errors [--project NAME] [--suggest]   error statistics of all projects
 #   ./harness.sh budget [--repo PATH]  tokens and hook latency that the harness costs
+#   ./harness.sh dashboard [--repo PATH]  HTML: does the agent make fewer errors, faster, cheaper
 #   ./harness.sh doctor                check the machine and the install
 #   ./harness.sh project <repo> [--team-store] [--lock]   optional: git hooks and CI gates
 #   ./harness.sh check <repo>          run the CI gates of a project
@@ -57,7 +58,7 @@ cmd_incident() {
   local log="$repo/error.md" day n id
   [ -f "$log" ] || cp "$KIT/templates/error.md" "$log"
   day="$(date +%F)"; n=$(grep -c "^## INC-$day-" "$log" || true); id="INC-$day-$(printf '%02d' $((n + 1)))"
-  printf '\n## %s: %s\n- Date: %s\n- Agent:\n- Where:\n- Symptom:\n- Cause:\n- Class:\n- Barrier:\n- Level: text | hook | server | OS\n- Repro:\n- ADR: -\n- Status: open\n' \
+  printf '\n## %s: %s\n- Date: %s\n- Agent:\n- Found by: barrier | gate | ci | review | human | prod\n- Where:\n- Symptom:\n- Cause:\n- Class:\n- Barrier:\n- Level: text | hook | server | OS\n- Repro:\n- ADR: -\n- Status: open\n- Closed:\n' \
     "$id" "$title" "$day" >> "$log"
   (cd "$repo" && "$PY" "$KIT/gates/collect.py" --source manual --outcome incident --name "$id" --detail "$title") >/dev/null 2>&1 || true
   ok "$id added to error.md. Fill in Barrier and Repro in 24 hours"
@@ -87,6 +88,7 @@ run() { # run <command> <args...>
     demo)      if [ -n "${2:-}" ]; then bash "$KIT/try-it.sh" --only "$2"; else bash "$KIT/try-it.sh"; fi ;;
     errors)    shift; "$PY" "$KIT/metrics/errors.py" --repo "$PWD" "$@" ;;
     budget)    shift; "$PY" "$KIT/metrics/budget.py" "$@" ;;
+    dashboard) shift; "$PY" "$KIT/metrics/dashboard.py" --repo "$PWD" "$@" ;;
     doctor)    cmd_doctor ;;
     check)     r="$(need_repo "${2:-}")" || return 1; (cd "$r" && bash gates/run-all.sh) ;;
     lock)      r="$(need_repo "${2:-}")" || return 1; (cd "$r" && "$PY" gates/checks.py lock) && ok "commit harness.lock with the change" ;;
@@ -103,9 +105,10 @@ menu() {
     printf '\n%sself-harness%s\n' "$B" "$N"
     cat <<'M'
   1) Install for all projects (global)
-  2) Demo: 25 attacks, 8 normal actions
+  2) Demo: 35 attacks, 16 normal actions
   3) Error statistics
   4) Cost for the agent (budget)
+  8) Learning dashboard (HTML)
   5) Check the install (doctor)
   6) Add git hooks and CI gates to a project
   7) Uninstall
@@ -117,6 +120,7 @@ M
       2) run demo ;;
       3) run errors ;;
       4) run budget ;;
+      8) run dashboard ;;
       5) run doctor ;;
       6) read -r -p "Path to the repository: " r; run project "$r" ;;
       7) run uninstall ;;

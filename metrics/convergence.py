@@ -20,8 +20,11 @@ import re
 import subprocess
 import sys
 
-FIX_RE = re.compile(r"(?i)\bfix|\bhotfix|\bbug|исправ|почин|чиним")
-TEST_RE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|/)test_[^/]+\.py|_test\.py)$")
+FIX_RE = re.compile(r"(?i)\bfix|\bhotfix|\bbug|\brevert|исправ|почин|чиним|откат")
+# the same list as gates/_lib.py TEST_FILE
+TEST_RE = re.compile(
+    r"(_test\.(go|py|rb|exs|dart|cpp|cc|c)|\.(test|spec)\.[cm]?[jt]sx?|(^|/)test_[^/]+\.py|_spec\.rb|"
+    r"(Test|Tests|IT|Spec)\.(java|kt|scala|cs|php|swift)|(^|/)tests/[^/]+\.rs)$")
 ADR_RE = re.compile(r"^(ADR-)?\d{3,4}")
 BULLET_RE = re.compile(r"^\s*([-*]|\d+\.)\s+\S")
 
@@ -59,7 +62,8 @@ def main():
         files = git(a.repo, "ls-tree", "-r", "--name-only", rec["last"]).splitlines()
         adr = {ADR_RE.match(f.rsplit("/", 1)[1]).group(0).replace("ADR-", "")
                for f in files if f.startswith(a.adr.rstrip("/") + "/") and ADR_RE.match(f.rsplit("/", 1)[1])}
-        rules_txt = git(a.repo, "show", f"{rec['last']}:{a.rules}")
+        # projects keep agent rules in AGENTS.md or CLAUDE.md; count the first one that exists
+        rules_txt = next((t for t in (git(a.repo, "show", f"{rec['last']}:{r}") for r in (a.rules, "CLAUDE.md")) if t), "")
         rows.append({
             "week": rec["week"], "start": rec["start"], "commits": rec["commits"], "merges": rec["merges"],
             "fix_share_pct": round(100 * rec["fixes"] / rec["commits"]),

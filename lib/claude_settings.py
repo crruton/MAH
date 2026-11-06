@@ -36,13 +36,16 @@ def add(p: Path, guard: str, collector: str = "") -> int:
     if p.exists():
         shutil.copy2(p, p.with_name(f"{p.name}.bak-harness-{dt.datetime.now():%Y%m%d-%H%M%S}"))
     hooks = data.setdefault("hooks", {})
-    want = [("PreToolUse", "Bash|Read|Edit|Write", guard)]
+    want = [("PreToolUse", "Bash|Read|Edit|MultiEdit|Write|NotebookEdit", guard)]
     if collector:
         want.append(("PostToolUse", "*", collector))
     added = 0
     for event, matcher, script in want:
         lst = hooks.setdefault(event, [])
-        if any(ours(e) and script.split("/")[-1] in json.dumps(e) for e in lst):
+        mine = [e for e in lst if ours(e) and script.split("/")[-1] in json.dumps(e)]
+        if mine:
+            for e in mine:  # an upgrade keeps the entry and gets the new matcher
+                e["matcher"] = matcher
             continue
         lst.append({"matcher": matcher, "hooks": [{"type": "command", "command": f'bash "{script}"', "timeout": 10}]})
         added += 1

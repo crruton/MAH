@@ -4,7 +4,7 @@
 # Global (default): once per machine, works in every project. Nothing goes into repositories.
 #   bash install.sh [--rules] [--no-tool-errors]
 #     ~/.claude/harness/hooks/   guard.sh (B04-B06), collect-tool-errors.sh
-#     ~/.claude/harness/bin/     collect.py, errors.py, budget.py
+#     ~/.claude/harness/bin/     collect.py, errors.py, budget.py, dashboard.py
 #     ~/.claude/skills/          5 process skills (existing skills with the same name stay)
 #     ~/.claude/settings.json    2 hook entries are added; other keys and hooks stay; backup first
 #     --rules                    also import templates/AGENTS.global.md into ~/.claude/CLAUDE.md
@@ -45,7 +45,7 @@ done
 global_install() {
   mkdir -p "$HH/hooks" "$HH/bin" "$HH/errors" "$H/skills"
   cp "$kit/hooks/guard.sh" "$kit/hooks/collect-tool-errors.sh" "$HH/hooks/"
-  cp "$kit/gates/collect.py" "$kit/metrics/errors.py" "$kit/metrics/budget.py" "$HH/bin/"
+  cp "$kit/gates/collect.py" "$kit/metrics/errors.py" "$kit/metrics/budget.py" "$kit/metrics/dashboard.py" "$HH/bin/"
   chmod +x "$HH"/hooks/*.sh
   touch "$HH/installed-skills.txt"
   local n kept=()

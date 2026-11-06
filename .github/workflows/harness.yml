@@ -7,7 +7,7 @@ on:
 
 jobs:
   demo:
-    name: 25 attacks stop, 8 normal actions pass
+    name: 35 attacks stop, 16 normal actions pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

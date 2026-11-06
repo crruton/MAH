@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.0] - 2026-11-06
+
+### Added
+- 10 barriers for common agent errors, set before the first incident. guard.sh: B28 skip of git hooks (`--no-verify`, `HUSKY=0`), B29 `curl | sh` (ask), B30 publish and deploy: `npm publish`, `docker push`, `terraform apply`, `kubectl delete`, `helm upgrade` (ask), B31 credential stores and env dumps, B32 hand edits of lock files and installed packages, B33 changes of hooks and agent settings (ask). Gates: B34 deleted tests, B35 linter and type check suppressions without a reason, B36 cut code (`// ... rest of the code`), stubs and debugger calls, B37 a dependency change without the lock file.
+- `./harness.sh dashboard`: one HTML file that shows if the agent makes fewer errors, faster and cheaper. Tool errors and barrier attempts per 100 calls, tokens, USD and active minutes per session, the state of each incident after its barrier (learned, holding, leaked), barriers that fired with no incident, new variants, candidates for the next barrier. The denominator comes from Claude Code transcripts, so the hooks cost nothing on successful calls.
+- docs/LOOP.md: the path of one error from the event to the verified barrier.
+- Incident fields `Found by` and `Closed`.
+
+### Changed
+- The demo runs 35 attacks and 16 normal actions.
+- B04 knows the full test commands of dotnet, rspec, phpunit, mix, swift, flutter, deno, ctest, tox, make test. B11 and the convergence metric know test files of Ruby, PHP, Kotlin, Swift, C#, Rust, Elixir, Dart and C++.
+- The guard hook also checks MultiEdit and NotebookEdit. A repeated install updates the matcher.
+- error-to-rule: the barrier must stop the class, the agent gets a rule line, the dashboard checks the result after 7 days.
+
+### Fixed
+- collect-tool-errors.sh wrote nothing in the global install: it looked for gates/collect.py in the repository. git hooks also fall back to the global collector.
+- guard.sh read the fields with a tab separator, so an empty command moved the file path into the command field, and @tsv doubled the backslashes of Windows paths. Path checks now get the real path.
+- convergence.py counts CLAUDE.md when the project has no AGENTS.md.
+
 ## [1.0.0] - 2026-11-06
 
 ### Changed

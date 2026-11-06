@@ -35,6 +35,9 @@ NAMES = {
     "B20": "check-harness-integrity", "B21": "regex across lines", "B22": "bare bash in subprocess",
     "B23": "stdio closed before reply", "B24": "dependency without major bound", "B25": "text without encoding",
     "B26": "CRLF in shell script", "B27": "script without exec bit",
+    "B28": "guard-bypass (--no-verify)", "B29": "guard-remote-exec (curl | sh)", "B30": "guard-publish (deploy, publish)",
+    "B31": "guard-credentials", "B32": "guard-generated (lock files)", "B33": "guard-self (hooks, settings)",
+    "B34": "check-test-deletion", "B35": "check-suppressions", "B36": "check-leftovers", "B37": "check-lockfile-sync",
 }
 
 
@@ -84,6 +87,9 @@ def load_incidents(repo: Path):
             "level": level if level in LEVELS else "",
             "class": (f.get("class") or f.get("класс") or "").strip(" —-") or "unclassified",
             "barriers": sorted(set(re.findall(r"\bB\d{2}\b", (f.get("barrier") or "") + " " + title))),
+            # optional fields: who found it (barrier, gate, ci, review, human, prod) and the close date
+            "found": (f.get("found by") or f.get("найдено") or "").split()[0].strip(",;").lower() if (f.get("found by") or f.get("найдено")) else "",
+            "closed": f.get("closed") or f.get("закрыт") or "",
         })
     return out
 
