@@ -5,7 +5,7 @@
 
 Sources (all local, read only):
   sessions   Claude Code transcripts in CLAUDE_CONFIG_DIR/projects/**.jsonl: each tool call,
-             each failed call, tokens, cost in USD, human prompts. This is the denominator:
+             each failed call, tokens, cost (USD in the file, rubles in the report), human prompts. This is the denominator:
              the hooks do not count successful calls, so they cost nothing.
   events     the error store (blocks and questions of the barriers), see errors.py.
   incidents  error.md of each repository: from --repo and from the session folders.
@@ -45,6 +45,40 @@ H = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 HH = Path(os.environ.get("HARNESS_HOME") or H / "harness")
 REJECT = re.compile(r"doesn't want to proceed|user rejected|Permission to use .* has been denied|was blocked by|denied by", re.I)
 BLOCKED = re.compile(r"Blocked by [\w-]+|hook (error|blocked)", re.I)
+
+
+def usd_rub():
+    """USD -> RUB rate and its source. Order: HARNESS_USD_RUB, today's cache, the Bank of Russia
+    daily rates (one GET, nothing is sent), an old cache. HARNESS_OFFLINE=1 skips the network."""
+    if os.environ.get("HARNESS_USD_RUB"):
+        try:
+            return float(os.environ["HARNESS_USD_RUB"].replace(",", ".")), "HARNESS_USD_RUB"
+        except ValueError:
+            pass
+    cache = HH / "usd_rub.json"
+    old = {}
+    try:
+        old = json.loads(cache.read_text(encoding="utf-8"))
+        if old.get("date") == dt.date.today().isoformat():
+            return float(old["rate"]), f"курс ЦБ РФ на {old['date']}"
+    except (OSError, ValueError, KeyError):
+        pass
+    if os.environ.get("HARNESS_OFFLINE") != "1":
+        try:
+            import urllib.request
+            with urllib.request.urlopen("https://www.cbr.ru/scripts/XML_daily.asp", timeout=4) as r:
+                xml = r.read().decode("windows-1251", errors="replace")
+            m = re.search(r"<CharCode>USD</CharCode>\s*<Nominal>(\d+)</Nominal>.*?<Value>([\d,]+)</Value>", xml, re.S)
+            if m:
+                rate = float(m.group(2).replace(",", ".")) / int(m.group(1))
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_text(json.dumps({"date": dt.date.today().isoformat(), "rate": rate}), encoding="utf-8", newline="\n")
+                return rate, f"курс ЦБ РФ на {dt.date.today().isoformat()}"
+        except Exception:  # no network: use the old cache
+            pass
+    if old.get("rate"):
+        return float(old["rate"]), f"курс ЦБ РФ на {old.get('date')}, сохранённый"
+    return None, "курса нет: задайте HARNESS_USD_RUB"
 
 
 def ts(s):
@@ -161,8 +195,10 @@ def pct(a, b):
 def build(repos, n_weeks):
     now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     sessions = load_sessions(H / "projects")
-    for s in sessions:  # session tokens fall back to the cost record when usage is absent
+    rate, rate_src = usd_rub()
+    for s in sessions:
         s["week"] = week(s["start"])
+        s["rub"] = s["cost"] * rate if rate else 0.0  # transcripts give USD; the report is in rubles
     events = E.load_events(E.store_dirs(Path.cwd()))
     for r in repos:
         events += [e for e in E.load_events(E.store_dirs(r)) if e not in events]
@@ -192,7 +228,8 @@ def build(repos, n_weeks):
             "attempts_rate": pct(len(by_agent), calls),
             "human_per_session": round((len(asked) + sum(s["rejected"] for s in ss)) / len(ss), 2) if ss else None,
             "tokens_per_session": round(statistics.median(s["tokens"] for s in ss) / 1000) if ss else None,
-            "cost_per_session": round(statistics.median(s["cost"] for s in ss if s["cost"]), 2) if any(s["cost"] for s in ss) else None,
+            "cost_per_session": round(statistics.median(s["rub"] for s in ss if s["rub"])) if any(s["rub"] for s in ss) else None,
+            "cost_week": round(sum(s["rub"] for s in ss)) if any(s["rub"] for s in ss) else None,
             "minutes_per_session": round(statistics.median(s["active"] / 60 for s in ss)) if ss else None,
             "blocked": len(hard), "asked": len(asked),
             "incidents": sum(1 for i in incidents if week(i["_date"]) == w),
@@ -276,6 +313,7 @@ def build(repos, n_weeks):
         "sessions": sessions, "events": events, "incidents": incidents,
         "totals": {
             "sessions": len(sessions), "calls": sum(s["calls"] for s in sessions), "events": len(events),
+            "rub": round(sum(s["rub"] for s in sessions)), "rate": rate, "rate_src": rate_src,
             "incidents": len(incidents), "open": len(incidents) - len(closed), "repos": len({s["repo"] for s in sessions}),
             "enforcement": pct(sum(1 for i in closed if i["level"] in ("os", "server", "hook")), len(closed)),
             "found_by_machine": pct(machine, sum(found.values()) if any(found) else 0) if any(k for k in found) else None,
@@ -302,7 +340,7 @@ TILES = [  # key, title, unit, lower is better, what it answers
     ("attempts_rate", "Попытки запрещённого", "на 100 вызовов", True, "агент перестаёт пытаться"),
     ("human_per_session", "Вопросы и отказы человека", "на сессию", True, "нагрузка на человека"),
     ("tokens_per_session", "Токены на сессию", "тыс., медиана", True, "дешевле"),
-    ("cost_per_session", "Стоимость сессии", "USD, медиана", True, "дешевле"),
+    ("cost_per_session", "Стоимость сессии", "₽, медиана", True, "дешевле"),
     ("minutes_per_session", "Длина сессии", "мин, медиана", True, "быстрее (смотреть вместе с объёмом)"),
 ]
 CHARTS = [
@@ -320,7 +358,10 @@ def esc(x):
 def fmt(v):
     if v is None:
         return "—"
-    return f"{v:,.2f}".rstrip("0").rstrip(".").replace(",", " ") if isinstance(v, float) else f"{v:,}".replace(",", " ")
+    # Russian number format: a space between thousands, a comma before decimals
+    if isinstance(v, float):
+        return f"{v:,.2f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")
+    return f"{v:,}".replace(",", " ")
 
 
 def tile(rows, key, title, unit, lower, note):
@@ -390,10 +431,11 @@ def page(r):
         or '<tr><td colspan="5" class="muted">Повторяющихся ошибок без барьера нет.</td></tr>'
     wk = "".join(f'<tr><td>{esc(w["week"])}</td><td class="num">{w["sessions"]}</td><td class="num">{fmt(w["calls"])}</td>'
                  f'<td class="num">{fmt(w["tool_error_rate"])}</td><td class="num">{w["blocked"]}</td><td class="num">{w["asked"]}</td>'
-                 f'<td class="num">{fmt(w["tokens_per_session"])}</td><td class="num">{fmt(w["cost_per_session"])}</td>'
+                 f'<td class="num">{fmt(w["tokens_per_session"])}</td><td class="num">{fmt(w["cost_per_session"])}</td><td class="num">{fmt(w["cost_week"])}</td>'
                  f'<td class="num">{w["incidents"]}</td><td class="num">{w["new_classes"]}</td></tr>' for w in rows)
+    money = (f'{fmt(t["rub"])} ₽ ({t["rate_src"]}, {fmt(round(t["rate"], 2))} ₽ за $)' if t["rate"] else t["rate_src"])
     summary = (f'{t["sessions"]} сессий, {fmt(t["calls"])} вызовов инструментов, {t["repos"]} проектов, '
-               f'{t["events"]} событий барьеров, {t["incidents"]} инцидентов ({t["open"]} открыто)')
+               f'{t["events"]} событий барьеров, {t["incidents"]} инцидентов ({t["open"]} открыто), потрачено {money}')
     return TEMPLATE.replace("{{SUMMARY}}", esc(summary)).replace("{{NOW}}", r["now"].strftime("%Y-%m-%d %H:%M UTC")) \
         .replace("{{TILES}}", tiles).replace("{{CHARTS}}", charts).replace("{{LOOP}}", loop_rows) \
         .replace("{{LEARNED}}", str(t["learned"])).replace("{{HOLDING}}", str(t["holding"])).replace("{{LEAKED}}", str(t["leaked"])) \
@@ -469,7 +511,7 @@ th{font-weight:600;color:var(--ink2);font-size:12px}td.num,th.num{text-align:rig
 
 <h2>По неделям</h2>
 <div class="card scroll"><table><tr><th>Неделя</th><th class="num">Сессий</th><th class="num">Вызовов</th><th class="num">Ошибок на 100</th>
-<th class="num">Блоков</th><th class="num">Вопросов</th><th class="num">Токенов, тыс.</th><th class="num">USD</th><th class="num">Инцидентов</th><th class="num">Новых классов</th></tr>{{WEEKS}}</table></div>
+<th class="num">Блоков</th><th class="num">Вопросов</th><th class="num">Токенов, тыс.</th><th class="num">₽ на сессию</th><th class="num">₽ за неделю</th><th class="num">Инцидентов</th><th class="num">Новых классов</th></tr>{{WEEKS}}</table></div>
 <p class="muted">Источники: журналы сессий Claude Code, хранилище событий харнеса, error.md проектов. Данные не покидают машину. Команда: ./harness.sh dashboard</p>
 </main>
 <script>
@@ -481,15 +523,70 @@ h.addEventListener('mouseleave',function(){tip.hidden=true;});});});
 """
 
 
+def evolve(r, repo: Path, dry: bool = False) -> int:
+    """One turn of the loop with no human: draft incidents for new candidates, tasks for the agent.
+    The agent closes a draft with the error-to-rule skill; a human reviews the barrier in the MR."""
+    log = repo / "error.md"
+    text = log.read_text(encoding="utf-8") if log.exists() else ""
+    now = dt.datetime.now(dt.timezone.utc)
+    known = {b for i in r["incidents"] for b in i["barriers"]}
+    drafts = []
+    for c in r["candidates"]:  # failed calls that repeat and that no barrier covers
+        if f"Signature: {c['sig']}" not in text:
+            drafts.append((c["sig"][:60], f"{c['n']} failed calls in {c['sessions']} sessions in 14 days ({c['repos']})", c["sig"]))
+    rep = collections.defaultdict(list)  # a barrier fires 3+ times in 7 days and no incident points at it
+    for e in r["events"]:
+        if e.get("outcome") in ("blocked", "failed", "asked") and e["_ts"] >= now.replace(tzinfo=None) - dt.timedelta(days=7):
+            rep[(e.get("barrier") or e.get("name"), E.norm(e.get("detail", "")))].append(e)
+    for (b, n), v in rep.items():
+        sig = f"{b}: {n[:70]}"
+        if len(v) >= 3 and b not in known and f"Signature: {sig}" not in text:
+            drafts.append((f"{b} fired {len(v)} times in 7 days", f"the agent keeps trying: {v[-1].get('detail', '')[:100]}", sig))
+    day = now.strftime("%Y-%m-%d")
+    n0 = len(re.findall(rf"^## INC-{day}-", text, re.M))
+    ids, body = [], ""
+    for k, (title, symptom, sig) in enumerate(drafts, 1):
+        iid = f"INC-{day}-{n0 + k:02d}"
+        ids.append(iid)
+        body += (f"\n## {iid}: {title}\n- Date: {day}\n- Agent:\n- Found by: dashboard\n- Where:\n- Symptom: {symptom}\n"
+                 f"- Signature: {sig}\n- Cause:\n- Class:\n- Barrier:\n- Level: text | hook | server | OS\n- Repro:\n- ADR: -\n- Status: open\n- Closed:\n")
+    if body and not dry:
+        if not log.exists():
+            body = "# Agent error log\n" + body
+        with log.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(body)
+    print(f"evolve: {len(ids)} new draft incident(s){' (dry run)' if dry else ''} in {log}")
+    tasks = [f"close {i} with the error-to-rule skill: find the class, make the barrier, add the repro" for i in ids]
+    tasks += [f"{l['id']}: the barrier holds but the agent tries ({l['after']}x). Fix the rule line or the skill that leads it there"
+              for l in r["loop"] if l["tone"] == "warning" and l["barriers"]]
+    status = {i["id"]: i["status"] for i in r["incidents"]}
+    later_open = lambda l: any(status.get(x) == "open" for x in re.findall(r"INC-[\d-]+", l["state"]))  # noqa: E731
+    # a leak that a later closed incident fixed is history, not a task
+    tasks += [f"{l['id']}: {l['state']}. Make the barrier stop the class, not the case"
+              for l in r["loop"] if l["tone"] == "serious" and later_open(l)]
+    tasks += [f"{l['id']}: only a text rule. Find a check that a machine can run" for l in r["loop"] if l["state"].startswith("только текст")]
+    if tasks:
+        print("Tasks for the agent (paste them into the agent session):")
+        for t in tasks:
+            print(f"  - {t}")
+    else:
+        print("Nothing to do: no new candidates, no barrier that leaks or that the agent keeps hitting.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", action="append", default=[])
     ap.add_argument("--weeks", type=int, default=12)
     ap.add_argument("--out", default="")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--evolve", metavar="REPO", help="draft incidents in REPO/error.md and print tasks for the agent")
+    ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
-    r = build([Path(x) for x in a.repo], a.weeks)
+    r = build([Path(x) for x in a.repo + ([a.evolve] if a.evolve else [])], a.weeks)
+    if a.evolve:
+        return evolve(r, Path(a.evolve).resolve(), a.dry_run)
     if a.json:
         print(json.dumps({"totals": r["totals"], "weeks": r["weeks"], "loop": r["loop"], "candidates": r["candidates"],
                           "proactive": r["proactive"]}, ensure_ascii=False, indent=2))

@@ -7,8 +7,12 @@
 - `./harness.sh dashboard`: one HTML file that shows if the agent makes fewer errors, faster and cheaper. Tool errors and barrier attempts per 100 calls, tokens, USD and active minutes per session, the state of each incident after its barrier (learned, holding, leaked), barriers that fired with no incident, new variants, candidates for the next barrier. The denominator comes from Claude Code transcripts, so the hooks cost nothing on successful calls.
 - docs/LOOP.md: the path of one error from the event to the verified barrier.
 - Incident fields `Found by` and `Closed`.
+- `./harness.sh evolve <repo>`: one turn of the loop with no human. It writes draft incidents for failed calls that repeat and for barriers that fire 3+ times with no incident, and prints tasks for the agent: close the drafts with error-to-rule, fix the rule where the agent keeps trying, widen a barrier that leaks.
+- docs/TALK.md: the talk structure around the main idea, the slide texts, the map from the talk proposal to the slides, the video invitation.
 
 ### Changed
+- README and PROCESS.md start from the main idea: the model does not learn between sessions, the environment does, and the numbers show it. Each process step ends with what the environment now holds instead of the human.
+- The dashboard shows costs in rubles: the Bank of Russia rate of the day (one GET to cbr.ru, cached for the day), `HARNESS_USD_RUB` to set it, `HARNESS_OFFLINE=1` for no network. Rubles per session and per week.
 - The demo runs 35 attacks and 16 normal actions.
 - B04 knows the full test commands of dotnet, rspec, phpunit, mix, swift, flutter, deno, ctest, tox, make test. B11 and the convergence metric know test files of Ruby, PHP, Kotlin, Swift, C#, Rust, Elixir, Dart and C++.
 - The guard hook also checks MultiEdit and NotebookEdit. A repeated install updates the matcher.
