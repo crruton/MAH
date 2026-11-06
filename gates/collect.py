@@ -30,7 +30,7 @@ from pathlib import Path
 
 MASKS = [
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S), "<private-key>"),
-    (re.compile(r"\b(AKIA[0-9A-Z]{16}|gh[posu]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_\-]{20}|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_\-]{20,})"), "<token>"),
+    (re.compile(r"\b(AKIA[0-9A-Z]{16}|gh[posu]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|gl(pat|dt|rt|ptt|cbt|soat)-[A-Za-z0-9_\-.]{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_\-]{20,})"), "<token>"),
     (re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"), "<jwt>"),
     (re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)\b(\s*[:=]\s*)\S+"), r"\1\2<secret>"),
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"), "<email>"),

@@ -3,6 +3,7 @@
 
 An incident is a '## INC-...' section. 'Статус: закрыт' (or 'Status: closed') requires
 non-empty 'Барьер', 'Уровень' and 'Репро-тест' fields (or Barrier, Level, Repro).
+'Статус: принят' (Status: accepted) means "not an agent error" and requires 'Причина' (Cause).
 Usage: check-error-log.py [path]   (default: error.md)
 """
 import re
@@ -37,6 +38,10 @@ def main() -> int:
             continue
         f = fields(sec)
         status = (f.get("Статус") or f.get("Status") or "").lower()
+        if status in ("принят", "accepted"):  # not an agent error: the reason must be written down
+            if not (f.get("Причина") or f.get("Cause") or "").strip(" —-"):
+                problems.append(f"{title}: accepted without 'Cause' (why this is not an agent error)")
+            continue
         if status not in ("закрыт", "closed"):
             continue
         for ru, en in REQUIRED.items():

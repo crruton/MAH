@@ -5,7 +5,7 @@
 #   deny  (exit 2)  the action destroys work that git cannot bring back, hides a problem, or leaks a secret:
 #                   B05 git reset --hard, git clean -f, git checkout -- ., force push, rm -rf of /, ~, ., .git
 #                   B06 secret files   B28 --no-verify, HUSKY=0   B31 credential stores (~/.aws, ~/.kube, ...)
-#                   B32 hand edit of lock files and installed packages
+#                   B32 hand edit of lock files and installed packages   B38 a heredoc with a syntax error
 #   ask             the action can be correct but needs a human:
 #                   B04 a full test run   B05 git branch -D, DROP/TRUNCATE, docker prune
 #                   B29 curl | sh   B30 publish, deploy, terraform apply, kubectl delete
@@ -17,8 +17,9 @@
 
 command -v jq >/dev/null 2>&1 || exit 0
 # Unit separator, not a tab: read collapses empty fields when IFS is whitespace. Windows paths get "/".
+input=$(cat)
 IFS=$'\x1f' read -r tool cmd path session < <(jq -r '[.tool_name // "", (.tool_input.command // "" | gsub("[\n\u001f]"; " ")),
-  (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // "" | gsub("\\\\"; "/")), .session_id // ""] | join("\u001f")')
+  (.tool_input.file_path // .tool_input.notebook_path // .tool_input.path // "" | gsub("\\\\"; "/")), .session_id // ""] | join("\u001f")' <<< "$input")
 
 HH="${HARNESS_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/harness}"
 log() { # log <barrier> <name> <outcome> <detail>
@@ -85,6 +86,20 @@ DRYRUN="git$S+push$S(.*$S)?-n($S|$)"   # git push -n is a dry run, not a skip of
 if [[ $flat =~ $BYPASS ]]; then
   m=${BASH_REMATCH[0]# }; m=${m% }
   [[ $flat =~ $DRYRUN && ! $flat =~ --no-verify ]] || deny B28 guard-bypass "\"$m\" skips the git hooks. Fix the problem that the hook reports." "$cmd"
+fi
+
+# B38 deny: a heredoc or a multi-line command with a shell syntax error. The shell runs the first part
+# and fails in the middle, or a quote inside the script ends the heredoc early (INC-2026-11-06-03, -08).
+if [[ $cmd == *"<<"* || ${#cmd} -gt 400 ]]; then
+  raw=$(jq -r '.tool_input.command // ""' <<< "$input")
+  if [[ $raw == *$'\n'* ]] && ! syn=$(bash -n -c "$raw" 2>&1); then
+    deny B38 guard-syntax "the command has a shell syntax error (${syn##*: }). Write the script to a file with the Write tool, then run the file." "$syn"
+  fi
+fi
+# B38 deny: sed -i with escapes in a code file. Two shells change \n into a real line break (INC-2026-11-06-13).
+SEDCODE="(^|[;&|][[:space:]]*)sed[[:space:]]([^;&|]*[[:space:]])?-[a-zA-Z]*i[^;&|]*\\\\[nt\\\\][^;&|]*\.(py|js|mjs|cjs|ts|tsx|jsx|go|java|kt|rb|php|rs|cs|c|cc|cpp|h|swift)([[:space:]]|$|[;&|])"
+if [[ $cmd =~ $SEDCODE ]]; then
+  deny B38 guard-syntax "sed -i with \\n, \\t or \\\\ in a code file. The escapes pass through two shells and break the code. Use the Edit tool." "$cmd"
 fi
 
 # B32 deny: a lock file changed by a text tool

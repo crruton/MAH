@@ -36,7 +36,7 @@ NAMES = {
     "B23": "stdio closed before reply", "B24": "dependency without major bound", "B25": "text without encoding",
     "B26": "CRLF in shell script", "B27": "script without exec bit",
     "B28": "guard-bypass (--no-verify)", "B29": "guard-remote-exec (curl | sh)", "B30": "guard-publish (deploy, publish)",
-    "B31": "guard-credentials", "B32": "guard-generated (lock files)", "B33": "guard-self (hooks, settings)",
+    "B31": "guard-credentials", "B32": "guard-generated (lock files)", "B33": "guard-self (hooks, settings)", "B38": "guard-syntax (heredoc, sed in code)",
     "B34": "check-test-deletion", "B35": "check-suppressions", "B36": "check-leftovers", "B37": "check-lockfile-sync",
 }
 
@@ -83,7 +83,8 @@ def load_incidents(repo: Path):
         out.append({
             "id": title.split(":")[0], "title": title.split(":", 1)[-1].strip(),
             "date": f.get("date") or f.get("дата") or title[4:14],
-            "status": "closed" if status in ("closed", "закрыт") else "open",
+            # accepted: looked at, not an agent error (expected failure); the reason is in Cause
+            "status": "closed" if status in ("closed", "закрыт") else ("accepted" if status in ("accepted", "принят") else "open"),
             "level": level if level in LEVELS else "",
             "class": (f.get("class") or f.get("класс") or "").strip(" —-") or "unclassified",
             "barriers": sorted(set(re.findall(r"\bB\d{2}\b", (f.get("barrier") or "") + " " + title))),
@@ -137,7 +138,7 @@ def build(repo: Path, weeks: int, project: str = ""):
             "events": len(ev), "blocked": len(blocked), "asked": len(asked), "repos": len(by_repo),
             "agent_share": round(100 * sum(1 for e in ev if e.get("actor") == "agent") / len(ev)) if ev else 0,
             "tool_errors": sum(1 for e in ev if e.get("outcome") == "tool-error"),
-            "incidents": len(inc), "open": len(inc) - len(closed),
+            "incidents": len(inc), "open": sum(1 for i in inc if i["status"] == "open"),
             "enforcement_ratio": round(100 * len(enforced) / len(closed)) if closed else 0,
         },
     }

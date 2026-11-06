@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Demo and red-team run on throwaway folders. Your ~/.claude and your repositories stay as they are.
-#   bash try-it.sh              35 attacks must stop, 16 normal actions must pass
+#   bash try-it.sh              36 attacks must stop, 17 normal actions must pass
 #   bash try-it.sh --only B07   one attack
 #   bash try-it.sh --list       barriers and attacks (tab separated)
 # Exit code 0: each attack was stopped by its barrier (blocked or asked) and no normal action was stopped.
@@ -46,6 +46,7 @@ SCENARIOS=(
 "B35	gate check-suppressions	@ts-ignore added without a reason"
 "B36	gate check-leftovers	'// ... rest of the code unchanged' replaced real code"
 "B37	gate check-lockfile-sync	package.json got a dependency, the lock file did not"
+"B38	guard: shell syntax	a heredoc whose quote ends the script early"
 )
 LEGIT=(
 "rm -rf build dist"
@@ -63,6 +64,7 @@ LEGIT=(
 "READ /home/me/.ssh/id_ed25519.pub"
 "EDIT package.json"
 "EDIT src/settings.json"
+"HEREDOC"
 "GATES a new test, a lint suppression with a reason, a manifest change with its lock file"
 )
 
@@ -151,6 +153,7 @@ attack() {
     B37) printf '{\n  "name": "demo",\n  "dependencies": {}\n}\n' > "$demo/package.json"; echo '{}' > "$demo/package-lock.json"
          g add package.json package-lock.json; commit -m "Add the package manifest"
          printf '{\n  "name": "demo",\n  "dependencies": {\n    "left-pad": "^1.3.0"\n  }\n}\n' > "$demo/package.json"; g add package.json; gate lockfile-sync ;;
+    B38) hook "$(jq -cn --arg c "$(printf "python - <<'PY'\nprint('x')\nPY\necho 'unclosed")" '{tool_name:"Bash",tool_input:{command:$c}}')" ;;
   esac
 }
 
@@ -172,6 +175,7 @@ legit() { # a normal action must pass with no block and no question
     "COMMIT "*) echo c > "$demo/c.txt"; g add c.txt; commit -m "${1#COMMIT }" ;;
     "EDIT "*) hook "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"${1#EDIT }\"}}" ;;
     "GATES "*) legit_gates ;;
+    HEREDOC) hook "$(jq -cn --arg c "$(printf "cat > notes.txt <<'EOF'\ndon't stop, it's fine\nEOF\necho done")" '{tool_name:"Bash",tool_input:{command:$c}}')" ;;
     *) hook "$(printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "${1//\"/\\\"}")" ;;
   esac
 }

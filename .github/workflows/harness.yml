@@ -7,7 +7,7 @@ on:
 
 jobs:
   demo:
-    name: 35 attacks stop, 16 normal actions pass
+    name: 36 attacks stop, 17 normal actions pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +16,10 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get install -y jq
       - run: bash try-it.sh
+      - name: the demo does not write to the real error store  # INC-2026-11-05-08
+        run: test -z "$(ls "$HOME/.claude/harness/errors" 2>/dev/null)" && test -z "$(ls .harness/errors/*.jsonl 2>/dev/null | xargs -r git status --porcelain --)"
+      - name: repro tests of the loop  # tests/test_loop.py
+        run: python tests/test_loop.py
 
   global-install:
     name: global install, idempotent, clean uninstall

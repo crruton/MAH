@@ -4,7 +4,7 @@
 #   ./harness.sh                       menu
 #   ./harness.sh install [--rules]     global install: once per machine, all projects
 #   ./harness.sh uninstall [--purge]   remove the global install
-#   ./harness.sh demo [Bnn]            35 attacks and 16 normal actions on throwaway folders
+#   ./harness.sh demo [Bnn]            36 attacks and 17 normal actions on throwaway folders
 #   ./harness.sh errors [--project NAME] [--suggest]   error statistics of all projects
 #   ./harness.sh budget [--repo PATH]  tokens and hook latency that the harness costs
 #   ./harness.sh dashboard [--repo PATH]  HTML: does the agent make fewer errors, faster, cheaper
@@ -107,7 +107,7 @@ menu() {
     printf '\n%sself-harness%s\n' "$B" "$N"
     cat <<'M'
   1) Install for all projects (global)
-  2) Demo: 35 attacks, 16 normal actions
+  2) Demo: 36 attacks, 17 normal actions
   3) Error statistics
   4) Cost for the agent (budget)
   8) Learning dashboard (HTML)

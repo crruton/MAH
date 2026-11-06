@@ -96,9 +96,14 @@ def text_of(content):
     return ""
 
 
+NOISE = re.compile(r"^\s*(Exit code \d+|</?\w+>|node:internal/\S+|\^+|at\s.+|throw\s.*|[✓✔]\s.*|OK\b.*|System\.Management\.Automation\.\w+)\s*$")
+ERRWORD = re.compile(r"(?i)\b(error|errno|exception|fail(ed|ure)?|fatal|denied|not found|no such|cannot|can't|invalid|unexpected|refused|timed? ?out)\b|ошибк|не найден")
+
+
 def signature(tool, msg):
-    lines = [l for l in msg.splitlines() if l.strip() and not re.match(r"^\s*(Exit code \d+|<\w+>|</\w+>)\s*$", l)]
-    first = (lines[0] if lines else msg.strip())[:200]
+    """The line that names the error, not a stack header or a success line before it (INC-2026-11-06-07, -10)."""
+    lines = [l for l in msg.replace("\r", "").splitlines() if l.strip() and not NOISE.match(l)]
+    first = next((l for l in lines if ERRWORD.search(l)), lines[0] if lines else msg.strip())[:200]
     first = re.sub(r"([A-Za-z]:)?[\\/][\w.\\/ -]+", "<path>", first)
     first = re.sub(r"\b[0-9a-f]{7,}\b|\d+", "#", first)
     return f"{tool}: {mask(first)[:90]}"
@@ -244,13 +249,17 @@ def build(repos, n_weeks):
     for i in sorted(incidents, key=lambda x: x["_date"]):
         ref = i["_date"]
         hits = [t for b in i["barriers"] for t in by_barrier.get(b, [])]
-        before = sum(1 for t in hits if ref - dt.timedelta(days=28) <= t < ref)
-        after = sum(1 for t in hits if ref <= t < ref + dt.timedelta(days=28))
+        # the date has no time: the events of that day are the catch that opened the incident, not repeats
+        start = ref + dt.timedelta(days=1)
+        before = sum(1 for t in hits if ref - dt.timedelta(days=28) <= t < start)
+        after = sum(1 for t in hits if start <= t < start + dt.timedelta(days=28))
         # a leak: a later incident went through the same barrier, so the barrier did not hold
         same_class_later = [j["id"] for j in incidents if j is not i and j["_date"] >= ref and j["id"] > i["id"]
                             and set(j["barriers"]) & set(i["barriers"])]
-        days = (now - ref).days
-        if i["status"] == "open":
+        days = (now - start).days
+        if i["status"] == "accepted":
+            state, tone = "принято: не ошибка агента", "neutral"
+        elif i["status"] == "open":
             state, tone = "открыт: нет барьера", "critical"
         elif not i["barriers"] and i["level"] == "text":
             state, tone = "только текст: машина не проверяет", "warning"
@@ -314,7 +323,7 @@ def build(repos, n_weeks):
         "totals": {
             "sessions": len(sessions), "calls": sum(s["calls"] for s in sessions), "events": len(events),
             "rub": round(sum(s["rub"] for s in sessions)), "rate": rate, "rate_src": rate_src,
-            "incidents": len(incidents), "open": len(incidents) - len(closed), "repos": len({s["repo"] for s in sessions}),
+            "incidents": len(incidents), "open": sum(1 for i in incidents if i["status"] == "open"), "repos": len({s["repo"] for s in sessions}),
             "enforcement": pct(sum(1 for i in closed if i["level"] in ("os", "server", "hook")), len(closed)),
             "found_by_machine": pct(machine, sum(found.values()) if any(found) else 0) if any(k for k in found) else None,
             "learned": sum(1 for l in loop if l["tone"] == "good"), "holding": sum(1 for l in loop if l["tone"] == "warning"),

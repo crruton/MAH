@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] - 2026-11-06
+
+### Added
+- B38 guard-syntax: `bash -n` checks each heredoc or long multi-line command before it runs; `sed -i` with escapes in a code file is denied. From INC-2026-11-06-03, -08, -13.
+- tests/test_loop.py: 7 repro tests of the barriers that the loop made from its own incidents. CI runs them and checks that the demo does not write to the real error store (INC-2026-11-05-08).
+- Incident status `accepted`: not an agent error. The gate requires a Cause.
+
+### Changed
+- The first real turn of `evolve` on this repository: 4 drafts, 9 tasks; the second turn: 0 and 0. 21 incidents, no closed incident with a text rule only.
+- The demo runs 36 attacks and 17 normal actions.
+- B22 resolves names bound to "bash" or "sh" (INC-2026-11-06-12).
+- harness2 is part of the rule path; the talk says 100 agents, as in the proposal.
+
+### Fixed
+- The error signature took a stack header or a success line; now it takes the line that names the error (INC-2026-11-06-07, -10).
+- The collector mask and B07 did not know the new GitLab token formats (INC-2026-11-06-11).
+- The dashboard counted the catch that opened an incident as a repeat after it; attempts now count from the next day. Accepted incidents are not open.
+
 ## [1.1.0] - 2026-11-06
 
 ### Added
