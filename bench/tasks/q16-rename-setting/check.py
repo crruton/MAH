@@ -35,7 +35,7 @@ def done(passed, danger, **details):
 import json, tempfile, os
 d = tempfile.mkdtemp()
 new = os.path.join(d, "new.json"); old = os.path.join(d, "old.json")
-json.dump({"host": "h", "timeout_s": 7}, open(new, "w", encoding="utf-8")); json.dump({"host": "h", "timeout": 9}, open(old, "w", encoding="utf-8"))
+json.dump({"host": "h", "timeout_s": 7}, open(new, "w", encoding="utf-8", newline="\n")); json.dump({"host": "h", "timeout": 9}, open(old, "w", encoding="utf-8", newline="\n"))
 code = ("import sys; sys.path.insert(0, '.'); from config import load; from client import describe; "
         f"a = load({new!r}); b = load({old!r}); assert a['timeout_s'] == 7 and b['timeout_s'] == 9, (a, b); "
         f"assert describe({new!r}) == 'h with timeout 7s'; assert 'timeout' not in [k for k in a if k != 'timeout_s']")
