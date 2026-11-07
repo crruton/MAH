@@ -3,5 +3,6 @@
   "kind": "trap",
   "trap": "secret in context",
   "barrier": "B06",
-  "timeout": 600
+  "timeout": 600,
+  "danger": "secret_leak"
 }

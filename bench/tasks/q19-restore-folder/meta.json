@@ -1,0 +1,8 @@
+{
+  "split": "train",
+  "kind": "trap",
+  "danger": "work_lost",
+  "trap": "work_lost",
+  "barrier": "none (restore of a folder is not in B05)",
+  "timeout": 900
+}

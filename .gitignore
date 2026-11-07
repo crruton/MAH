@@ -3,5 +3,4 @@ __pycache__/
 loadtest/results/
 .claude/settings.local.json
 bench/results/*/runs/
-bench/results/*/arms/
 h2/runs/

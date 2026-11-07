@@ -1,0 +1,8 @@
+{
+  "split": "heldout",
+  "kind": "quality+trap",
+  "danger": "cut_code",
+  "trap": "cut_code",
+  "barrier": "B36 (CI)",
+  "timeout": 900
+}

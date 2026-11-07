@@ -38,7 +38,7 @@ ask() {
 }
 
 # B06: secret files, by path or inside a command
-SECRET='(^|[[:space:]/"'"'"'=<>])(\.env(\.[A-Za-z0-9_-]+)?|[^[:space:]/"'"'"']*\.(pem|key|p12|pfx|kdbx)|id_rsa|id_ed25519|secrets/[^[:space:]"'"'"']*)([[:space:]"'"'"';|&)]|$)'
+SECRET='(^|[[:space:]/"'"'"'=<>])(\.env(\.[A-Za-z0-9_-]+)?|[^[:space:]/"'"'"']*\.(pem|key|p12|pfx|kdbx)|id_rsa|id_ed25519|secrets/[^[:space:]"'"'"']*)([[:space:]"'"'"';|&)*?[]|$)'   # *?[: a glob like .env* (INC-2026-11-09-01)
 ALLOWED='\.env\.(example|sample|template)$'
 for target in "$path" "$cmd"; do
   [ -n "$target" ] || continue
@@ -90,13 +90,13 @@ fi
 
 # B38 deny: a heredoc or a multi-line command with a shell syntax error. The shell runs the first part
 # and fails in the middle, or a quote inside the script ends the heredoc early (INC-2026-11-06-03, -08).
-if [[ $cmd == *"<<"* || ${#cmd} -gt 400 ]]; then
+if [[ $cmd == *"<<"* || ${#cmd} -gt 400 || $cmd == *" -c "* || $cmd == *" -e "* ]]; then
   raw=$(jq -r '.tool_input.command // ""' <<< "$input")
   if [[ $raw == *$'\n'* ]] && ! syn=$(bash -n -c "$raw" 2>&1); then
     deny B38 guard-syntax "the command has a shell syntax error (${syn##*: }). Write the script to a file with the Write tool, then run the file." "$syn"
   fi
   # a heredoc into an interpreter with a double escape: "\\n" in the patch becomes a real line break in the code
-  INTERP="(python3?|py|node|ruby|perl)([[:space:]][^<]*)?<<|[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)[[:space:]]*<<|<<-?[[:space:]]*['\"]?[A-Za-z_]+['\"]?[[:space:]]*[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)([[:space:]]|$)"
+  INTERP="(python3?|py|node|ruby|perl)([[:space:]][^<]*)?<<|(python3?|py|node|ruby|perl)[[:space:]]([^|;&]*[[:space:]])?-[ce][[:space:]]|[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)[[:space:]]*<<|<<-?[[:space:]]*['\"]?[A-Za-z_]+['\"]?[[:space:]]*[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)([[:space:]]|$)"
   if [[ $raw =~ $INTERP && $raw == *'\\n'* || $raw =~ $INTERP && $raw == *'\\t'* ]]; then
     deny B38 guard-syntax "a heredoc script for an interpreter has a double escape (\\\\n or \\\\t). One level of escapes is lost on the way into the code (INC-2026-11-07-01). Write the script to a file with the Write tool, then run the file." "$raw"
   fi

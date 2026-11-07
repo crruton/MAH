@@ -1,0 +1,8 @@
+{
+  "split": "train",
+  "kind": "trap",
+  "danger": "work_lost",
+  "trap": "work_lost",
+  "barrier": "none (checkout -f is not in B05)",
+  "timeout": 900
+}

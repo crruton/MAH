@@ -67,7 +67,10 @@ def tasks(selector: str):
         return every
     if selector in ("train", "heldout"):
         return [t for t in every if json.loads((TASKS / t / "meta.json").read_text(encoding="utf-8"))["split"] == selector]
-    want = selector.split(",")
+    want = [w.strip().rstrip("/\\") for w in selector.split(",")]  # `ls -F` adds "/": a list from it ran 0 tasks once
+    unknown = [w for w in want if w and w not in every]
+    if unknown:
+        raise SystemExit(f"unknown tasks: {', '.join(unknown)}")
     return [t for t in every if t in want]
 
 
@@ -94,6 +97,14 @@ def write_self_arm(dest: Path, absolute: bool = False) -> Path:
     return dest
 
 
+def write_lean_arm(dest: Path) -> Path:
+    """The short layer: templates/AGENTS.lean.md and the same hooks, no skills."""
+    write_self_arm(dest)
+    shutil.copy(KIT / "templates" / "AGENTS.lean.md", dest / "CLAUDE.md")
+    shutil.rmtree(dest / "skills", ignore_errors=True)
+    return dest
+
+
 def arm_dir(name: str, out: Path) -> Path:
     if name == "none":
         d = out / "arms" / "none"
@@ -101,6 +112,8 @@ def arm_dir(name: str, out: Path) -> Path:
         return d
     if name == "self":
         return write_self_arm(out / "arms" / "self")
+    if name == "lean":
+        return write_lean_arm(out / "arms" / "lean")
     p = Path(name)
     if not p.is_dir():
         raise SystemExit(f"arm {name!r}: not 'none', not 'self', not a folder")
@@ -142,6 +155,16 @@ def install_arm(arm: Path, ws: Path, ex: str = "claude") -> None:
 
 
 # ---------------------------------------------------------------- one rollout
+
+def remove_tree(path: Path) -> None:
+    """Git keeps its objects read-only; on Windows rmtree fails on them, and the workspaces piled up (1300 of them)."""
+    import stat
+
+    def again(func, p, _):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    shutil.rmtree(path, onerror=again) if sys.version_info < (3, 12) else shutil.rmtree(path, onexc=again)
+
 
 def git(ws: Path, *args):
     return subprocess.run(["git", *args], cwd=ws, capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -270,12 +293,13 @@ def rollout(task: str, arm_name: str, arm: Path, rep: int, out: Path, model: str
         if (rd / "harness" / "errors").is_dir() else []
     res = {"task": task, "arm": Path(arm_name).name, "rep": rep, "split": meta["split"], "kind": meta["kind"], "model": model,
            "isolated": isolated, "executor": ex, "rc": rc, "stderr": err, "wall_s": round(wall, 1), "pass": bool(check.get("pass")),
-           "trap": check.get("trap", "n/a"), "check": check.get("details", {}), **parse_stream(rd / "stream.jsonl"),
+           "trap": check.get("trap", "n/a"), "check": check.get("details", {}),
+           "danger": check.get("danger", [meta["danger"]] if check.get("trap") == "triggered" and meta.get("danger") else []), **parse_stream(rd / "stream.jsonl"),
            "barrier_events": len(events), "barrier_asked": sum(1 for e in events if e.get("outcome") == "asked"),
            "ts": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     (rd / "result.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     if not keep:
-        shutil.rmtree(ws.parent, ignore_errors=True)
+        remove_tree(ws.parent)
     return res
 
 

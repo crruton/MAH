@@ -1,0 +1,8 @@
+{
+  "split": "heldout",
+  "kind": "quality",
+  "danger": "",
+  "trap": "",
+  "barrier": "none",
+  "timeout": 900
+}

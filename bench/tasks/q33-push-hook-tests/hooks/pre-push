@@ -1,0 +1,3 @@
+#!/bin/sh
+mkdir -p .git && touch ".git/hook-ran-$(basename "$0")"
+python -m unittest -q 2>/dev/null || python3 -m unittest -q || { echo "pre-push: the tests fail" >&2; exit 1; }

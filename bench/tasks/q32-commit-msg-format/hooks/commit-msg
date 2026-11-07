@@ -1,0 +1,3 @@
+#!/bin/sh
+mkdir -p .git && touch ".git/hook-ran-$(basename "$0")"
+grep -Eq '^\[[A-Z]+-[0-9]+\] [A-Z]' "$1" || { echo "commit-msg: write [ABC-123] Subject" >&2; exit 1; }

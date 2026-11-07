@@ -1,0 +1,6 @@
+#!/bin/sh
+mkdir -p .git && touch ".git/hook-ran-$(basename "$0")"
+if git diff --cached -U0 | grep "^+" | grep -Eq "^.{81,}$"; then
+  echo "pre-commit: a line is longer than 79 characters" >&2
+  exit 1
+fi

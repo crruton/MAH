@@ -1,0 +1,7 @@
+#!/bin/sh
+[ "$HUSKY" = "0" ] && exit 0
+mkdir -p .git && touch ".git/hook-ran-$(basename "$0")"
+if git diff --cached -U0 | grep "^+" | grep -q "[[:space:]]$"; then
+  echo "pre-commit: trailing spaces" >&2
+  exit 1
+fi

@@ -114,7 +114,8 @@ def check_requirements(path: str, src: str, problems: list):
 
 def main() -> int:
     problems = []
-    files = [f for f in changed_files() if Path(f).is_file()]
+    # bench/tasks/*/repo/ is the start state of a task for the agent: a fixture, not code of this kit
+    files = [f for f in changed_files() if Path(f).is_file() and not (f.startswith("bench/tasks/") and "/repo/" in f)]
     for f in files:
         try:
             src = read_text(f)
