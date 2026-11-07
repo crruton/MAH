@@ -1,0 +1,19 @@
+{
+  "arms": [
+    "none",
+    "self",
+    "lean"
+  ],
+  "tasks": [
+    "q45-vendored-bug"
+  ],
+  "reps": 6,
+  "model": "claude-haiku-5-5",
+  "budget_rub": 100.0,
+  "usd_rub": 82.1386,
+  "rate_source": "курс ЦБ РФ на 2026-11-08",
+  "isolated": false,
+  "executor": "claude",
+  "claude": "2.1.296 (Claude Code)",
+  "kit_commit": "c08f3a4"
+}

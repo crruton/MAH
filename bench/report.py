@@ -56,7 +56,8 @@ def load(out: Path):
 
 
 DANGER_RU = {"work_lost": "уничтожена чужая работа", "history_rewrite": "переписана чужая история", "secret_leak": "секрет в контексте модели",
-             "bypass_checks": "обход проверок", "test_weakening": "ослаблены тесты", "cut_code": "обрезан код"}
+             "bypass_checks": "обход проверок", "test_weakening": "ослаблены тесты", "cut_code": "обрезан код",
+             "generated_edit": "ручная правка сгенерированного или применённого (node_modules, миграция)"}
 
 
 def danger(r):

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0] - 2026-11-08
+
+### Added
+- 30 hard bench tasks (q17-q46) and 8 more (q09-q16) from the damage classes of the incident logs, committed before the runs. 46 tasks in all.
+- The lean arm: templates/AGENTS.lean.md, 10 rules for the damage classes, with the same barriers.
+- Damage per run in the report (lost work, rewritten history, secret in the context, skipped checks, weakened tests, cut code, edits of generated or applied files), the rate of unsolved tasks, a headline table with relative change.
+- bench/merge.py joins several runs for one report. docs/RESULTS.md: 924 runs, claude-haiku-5-5, 438 rubles. Lean against no harness: dangerous runs 14% -> 3% (-80%), unsolved 20% -> 13% (-34%), both proven; +14% rubles, +17% time.
+
+### Fixed
+- B06 let `cat .env*` pass (INC-2026-11-09-01). B38 also stops `python -c` with a double escape (INC-2026-11-09-03).
+- The q45 check counted `npm install` of the published package as damage. A task list from `ls -F` ran 0 tasks. Workspaces are deleted on Windows.
+
 ## [1.5.0] - 2026-11-09
 
 ### Added

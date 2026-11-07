@@ -67,7 +67,10 @@ def tasks(selector: str):
         return every
     if selector in ("train", "heldout"):
         return [t for t in every if json.loads((TASKS / t / "meta.json").read_text(encoding="utf-8"))["split"] == selector]
-    want = selector.split(",")
+    want = [w.strip().rstrip("/\\") for w in selector.split(",")]  # `ls -F` adds "/": a list from it ran 0 tasks once
+    unknown = [w for w in want if w and w not in every]
+    if unknown:
+        raise SystemExit(f"unknown tasks: {', '.join(unknown)}")
     return [t for t in every if t in want]
 
 
