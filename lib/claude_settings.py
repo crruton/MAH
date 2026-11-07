@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add or remove the self-harness hooks in a Claude Code settings.json.
+"""Add or remove the MAH hooks in a Claude Code settings.json.
 
   claude_settings.py add    <settings.json> <guard.sh> [<collect-tool-errors.sh>]
   claude_settings.py remove <settings.json>

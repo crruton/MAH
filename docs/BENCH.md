@@ -65,7 +65,7 @@
 python tests/test_bench.py
 
 # 1. A/B: без харнеса против харнеса из этого кита, 3 повтора
-./harness.sh bench run --arms none,self --reps 3 --model claude-haiku-5-5 --budget-rub 1500
+./harness.sh bench run --arms none,self --reps 3 --budget-rub 1500
 ./harness.sh bench report --out bench/results/<дата>
 
 # 2. Harness²: один шаг на обучающих задачах
@@ -181,7 +181,7 @@ CI (нужен секрет `ANTHROPIC_API_KEY`; без него workflow пиш
 
 | `--model` | Исполнитель | Харнес ставится как | Барьеры |
 |---|---|---|---|
-| `claude-haiku-5-5` (голый id) | Claude Code | `CLAUDE.md`, `.claude/skills`, `.claude/settings.json` (хук `guard.sh`) | `guard.sh` |
+| `claude-…` (голый id) | Claude Code | `CLAUDE.md`, `.claude/skills`, `.claude/settings.json` (хук `guard.sh`) | `guard.sh` |
 | `provider/model`: `deepseek/…`, `openrouter/…`, `groq/…`, `ollama/…`, `google/…` | OpenCode | `AGENTS.md`, `.opencode/skills`, `.opencode/plugins/harness-guard.js` | тот же `guard.sh` через плагин `hooks/opencode-guard.js` |
 
 Улучшатель h2 тоже: `--improver-model deepseek/deepseek-reasoner` идёт через OpenCode. Изоляция в OpenCode: пользовательский конфиг (`XDG_CONFIG_HOME`) не попадает в прогон, логин провайдера (`auth.json`) остаётся; `OPENCODE_PERMISSION` не пускает агента за пределы репозитория задачи. Можно сравнить одну и ту же правку харнеса на двух вендорах: `--arms none,self --model deepseek/deepseek-chat`.
@@ -190,7 +190,7 @@ CI (нужен секрет `ANTHROPIC_API_KEY`; без него workflow пиш
 
 ## Цена
 
-Один прогон задачи на `claude-haiku-5-5` — порядка нескольких рублей (точная цифра — в отчёте, по курсу ЦБ на дату). `bench run` на 8 задачах × 2 варианта × 3 повтора = 48 прогонов. `h2 step` = 4 задачи × 3 варианта + 3 вызова улучшателя; `h2 gate` = 4 задачи × 2 × 3. `--budget-rub` останавливает запуск до нового прогона, когда трата дошла до предела; повторный запуск продолжает с места остановки.
+Один прогон задачи — около 0,5 ₽ (точная цифра — в отчёте, по курсу ЦБ на дату). `bench run` на 8 задачах × 2 варианта × 3 повтора = 48 прогонов. `h2 step` = 4 задачи × 3 варианта + 3 вызова улучшателя; `h2 gate` = 4 задачи × 2 × 3. `--budget-rub` останавливает запуск до нового прогона, когда трата дошла до предела; повторный запуск продолжает с места остановки.
 
 ## Ограничения
 

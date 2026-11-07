@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# self-harness launcher.
+# MAH launcher.
 #
 #   ./harness.sh                       menu
 #   ./harness.sh install [--rules]     global install: once per machine, all projects
@@ -108,7 +108,7 @@ run() { # run <command> <args...>
 
 menu() {
   while true; do
-    printf '\n%sself-harness%s\n' "$B" "$N"
+    printf '\n%sMAH%s\n' "$B" "$N"
     cat <<'M'
   1) Install for all projects (global)
   2) Demo: 36 attacks, 17 normal actions

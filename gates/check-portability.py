@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """B21-B27. Portability gate: mistakes that work on Linux and break on Windows, or break later.
 
-Each rule comes from a real agent error (see error.md of self-harness):
+Each rule comes from a real agent error (see error.md of MAH):
   B21  re.M / re.MULTILINE pattern with \\s: an empty field captures the next line. Use [ \\t].
   B22  subprocess with a bare "bash" or "sh": Windows starts WSL from System32, not Git Bash.
        Use shutil.which("bash").

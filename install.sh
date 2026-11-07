@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# self-harness installer.
+# MAH installer.
 #
 # Global (default): once per machine, works in every project. Nothing goes into repositories.
 #   bash install.sh [--rules] [--no-tool-errors]
@@ -68,7 +68,7 @@ global_install() {
   fi
   git -C "$kit" rev-parse --short HEAD > "$HH/VERSION" 2>/dev/null || echo dev > "$HH/VERSION"
   command -v jq >/dev/null || echo "WARNING: jq is not installed. The hooks allow all actions until you install jq." >&2
-  echo "Installed self-harness into $H"
+  echo "Installed MAH into $H"
   echo "  hooks: guard.sh$([ $tool_errors = 1 ] && echo ', collect-tool-errors.sh')   skills: $(tr '\n' ' ' < "$HH/installed-skills.txt")"
   [ ${#kept[@]} -gt 0 ] && echo "  kept your existing skills: ${kept[*]}"
   echo "  errors go to $HH/errors/ — see: ./harness.sh errors"
@@ -84,7 +84,7 @@ global_uninstall() {
     "$PY" -c "import sys,io;p=sys.argv[1];m=sys.argv[2];L=io.open(p,encoding='utf-8').read().splitlines(True);io.open(p,'w',encoding='utf-8',newline='').writelines(l for l in L if m not in l.replace(chr(92),'/'))" "$H/CLAUDE.md" "harness/AGENTS.md"   # no leading slash: Git Bash rewrites "/x" arguments to "C:/Program Files/Git/x"
   fi
   rm -rf "${HH:?}/hooks" "$HH/bin" "$HH/AGENTS.md" "$HH/installed-skills.txt" "$HH/VERSION"
-  if [ $purge = 1 ]; then rm -rf "${HH:?}"; echo "Removed self-harness and the error store"; else echo "Removed self-harness. The error store stays in $HH/errors (--purge deletes it)"; fi
+  if [ $purge = 1 ]; then rm -rf "${HH:?}"; echo "Removed MAH and the error store"; else echo "Removed MAH. The error store stays in $HH/errors (--purge deletes it)"; fi
 }
 
 project_install() {

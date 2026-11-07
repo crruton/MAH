@@ -1,5 +1,5 @@
 @echo off
-rem self-harness launcher for Windows: double-click to open the menu, or pass a command:
+rem MAH launcher for Windows: double-click to open the menu, or pass a command:
 rem   harness.cmd start C:\path\to\repo
 setlocal
 set "BASH="
