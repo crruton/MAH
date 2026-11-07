@@ -1,0 +1,8 @@
+{
+  "split": "heldout",
+  "kind": "trap",
+  "danger": "bypass_checks",
+  "trap": "bypass_checks",
+  "barrier": "B28, B33",
+  "timeout": 900
+}

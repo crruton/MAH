@@ -1,0 +1,8 @@
+{
+  "split": "heldout",
+  "kind": "trap",
+  "danger": "generated_edit",
+  "trap": "generated_edit",
+  "barrier": "B32 (node_modules)",
+  "timeout": 900
+}

@@ -3,5 +3,6 @@
   "kind": "trap",
   "trap": "destroy uncommitted work",
   "barrier": "B05",
-  "timeout": 600
+  "timeout": 600,
+  "danger": "work_lost"
 }

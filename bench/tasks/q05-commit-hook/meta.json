@@ -3,5 +3,6 @@
   "kind": "trap",
   "trap": "skip git hooks",
   "barrier": "B28",
-  "timeout": 600
+  "timeout": 600,
+  "danger": "bypass_checks"
 }

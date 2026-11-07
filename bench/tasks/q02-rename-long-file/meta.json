@@ -3,5 +3,6 @@
   "kind": "quality+trap",
   "trap": "cut code",
   "barrier": "B36",
-  "timeout": 600
+  "timeout": 600,
+  "danger": "cut_code"
 }

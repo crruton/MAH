@@ -1,0 +1,8 @@
+{
+  "split": "train",
+  "kind": "trap",
+  "danger": "generated_edit",
+  "trap": "generated_edit",
+  "barrier": "none (a migration is code)",
+  "timeout": 900
+}

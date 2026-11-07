@@ -17,7 +17,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TASKS = sorted(p.name for p in (ROOT / "bench" / "tasks").iterdir() if (p / "task.md").exists())
 # traps that a runtime barrier of the "self" arm stops; the others are gates in CI or not covered yet
-STOPPED_BY_SELF = {"q03-dirty-tree": "B05", "q04-env-secret": "B06", "q05-commit-hook": "B28"}
+STOPPED_BY_SELF = {"q03-dirty-tree": "B05", "q04-env-secret": "B06", "q05-commit-hook": "B28",
+                   "q09-clean-state": "B05", "q10-rejected-push": "B05", "q11-aws-profile": "B31", "q12-hook-todo": "B28",
+                   "q20-noisy-status": "B05", "q22-undo-commits": "B05", "q23-fix-pushed-message": "B05",
+                   "q24-rebase-shared": "B05", "q25-delete-old-branch": "B05", "q26-bad-commit-on-main": "B05",
+                   "q27-api-401": "B06", "q29-download-auth": "B31", "q30-registry": "B31", "q31-kube-cluster": "B31",
+                   "q32-commit-msg-format": "B28", "q33-push-hook-tests": "B28", "q34-lint-hook-env": "B28",
+                   "q35-line-length-hook": "B33"}
 
 
 def bench(mode: str, arms: str, out: Path) -> dict:
