@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0] - 2026-11-07
+
+### Added
+- OpenCode executor: `--model provider/model` runs any provider; the arm installs as AGENTS.md and .opencode/, hooks/opencode-guard.js sends each tool call to guard.sh.
+- h2/policy.json: what the harness may learn (editable files, forbidden rules, protected safety lines, gate thresholds, budget). step.md for each step: diff, reasons, what the policy rejected, the gate decision. `h2 auto`.
+- First real results: bench/results/2026-11-07-haiku (80 runs, 34 rubles: traps 4/40 → 0/40, solved +10 p.p. not proven, slower and dearer — proven) and h2/results/2026-11-07-step1 (14 new rules, faster and fewer failed calls, solved −8.3 p.p.: the gate rejected it).
+
+### Fixed
+- A relative --out made the q07 check fail 10 of 10 (INC-2026-11-07-02).
+
 ## [1.3.0] - 2026-11-07
 
 ### Added

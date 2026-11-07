@@ -307,3 +307,18 @@ The agent that wrote this kit made these errors. Each one became a barrier or a 
 - ADR: -
 - Status: closed
 - Closed: 2026-11-07
+
+## INC-2026-11-07-02: a relative run folder made q07 fail 10 of 10 in the first real bench
+- Date: 2026-11-07
+- Agent: claude-code
+- Found by: review
+- Where: bench/run.py, the first real A/B (none vs self, 80 runs) and the gate of the first Harness² step
+- Symptom: q07 was "not solved" in all 10 runs of both arms, but the code of the agent was correct
+- Cause: --out was relative. check.py runs its probe from the workspace of the agent, so the probe path pointed into the workspace. A measurement error, not an agent error: without the review the report would have said "the harness does not help on q07"
+- Class: measurement, false result
+- Barrier: the run folder is always absolute; tests/test_bench.py runs the bench with a relative --out. The 10 runs and the 6 gate runs were run again
+- Level: hook
+- Repro: tests/test_bench.py (the fake bench runs with a relative --out; q07 must pass with the reference solution)
+- ADR: -
+- Status: closed
+- Closed: 2026-11-07

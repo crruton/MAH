@@ -21,9 +21,10 @@ STOPPED_BY_SELF = {"q03-dirty-tree": "B05", "q04-env-secret": "B06", "q05-commit
 
 
 def bench(mode: str, arms: str, out: Path) -> dict:
+    """--out is given relative to its parent: a relative run folder broke the q07 check once (INC-2026-11-07-02)."""
     env = dict(os.environ, HARNESS_BENCH_EXECUTOR="fake", HARNESS_FAKE=mode, HARNESS_USD_RUB="80", PYTHONIOENCODING="utf-8")
-    r = subprocess.run([sys.executable, str(ROOT / "bench" / "run.py"), "run", "--arms", arms, "--reps", "1", "--jobs", "4", "--out", str(out)],
-                       env=env, capture_output=True, text=True, encoding="utf-8")
+    r = subprocess.run([sys.executable, str(ROOT / "bench" / "run.py"), "run", "--arms", arms, "--reps", "1", "--jobs", "4", "--out", out.name],
+                       cwd=out.parent, env=env, capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stdout + r.stderr
     return {(p.parts[-4], p.parts[-3]): json.loads(p.read_text(encoding="utf-8")) for p in out.glob("runs/*/*/*/result.json")}
 
