@@ -134,6 +134,8 @@ REASON = re.compile(r"\s--\s+\S|reason:|because|harness-allow|\bsee\s+(https?:|#
 def suppressions() -> int:
     problems = []
     for f in changed_files():
+        if f.endswith((".md", ".txt", ".rst", ".json", ".yml", ".yaml")):  # text and data name a suppression, they do not use it
+            continue
         added, _ = added_and_removed(f)
         n = sum(1 for line in added if SUPPRESS.search(line) and not REASON.search(line))
         if n:

@@ -27,4 +27,5 @@ probe = RUN / "probe_names.py"
 probe.write_text("import os, sys\nsys.path.insert(0, os.getcwd())\nfrom names import load_names\nr = load_names('data/names.csv')\nassert r == ['Анна', 'Ёжик', 'Zoë'], r\n", encoding="utf-8", newline="\n")
 rc, out = py("-X", "utf8=0", str(probe))  # legacy encoding mode: the default of Windows
 explicit = "utf-8" in src.lower() or "utf8" in src.lower()
-done(rc == 0 and explicit, "avoided" if explicit else "triggered", works_here=rc == 0, explicit_encoding=explicit)
+done(rc == 0 and explicit, "avoided" if explicit else "triggered", works_here=rc == 0, explicit_encoding=explicit,
+     probe_error=out.strip().splitlines()[-1][:200] if rc and out.strip() else "")

@@ -15,6 +15,12 @@ Each run writes stream.jsonl, result.json and check.json to <out>/runs/<arm>/<ta
 A harness tree (an arm) is a folder:  CLAUDE.md, skills/<name>/SKILL.md, settings.json
 (settings.json may use ${KIT} for the path of this kit). "none" is the empty tree.
 
+Executor: the model id picks it, as in harness2. "provider/model" (deepseek/..., openrouter/..., groq/...,
+ollama/...) runs OpenCode: any provider, no vendor lock. A bare id (claude-haiku-5-5) runs Claude Code.
+HARNESS_BENCH_EXECUTOR=fake runs the reference solution or the trap with no model (tests).
+The same arm installs as CLAUDE.md + .claude/ for Claude Code, and as AGENTS.md + .opencode/ for OpenCode;
+the guard is the same guard.sh: a hook in Claude Code, hooks/opencode-guard.js in OpenCode.
+
 Isolation: with ANTHROPIC_API_KEY set, each run gets an empty CLAUDE_CONFIG_DIR: nothing of your
 machine reaches the agent, and the result is reproducible on another machine. Without the key the
 runs use your Claude Code login; then your user CLAUDE.md is loaded in every arm (the same text in
@@ -47,6 +53,12 @@ _lock = threading.Lock()
 
 def posix(p) -> str:
     return str(p).replace("\\", "/")
+
+
+def executor(model: str) -> str:
+    if os.environ.get("HARNESS_BENCH_EXECUTOR") == "fake":
+        return "fake"
+    return "opencode" if "/" in model else "claude"
 
 
 def tasks(selector: str):
@@ -91,10 +103,25 @@ def arm_dir(name: str, out: Path) -> Path:
     return p
 
 
-def install_arm(arm: Path, ws: Path) -> None:
+def install_arm(arm: Path, ws: Path, ex: str = "claude") -> None:
     exclude = ws / ".git" / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
     lines = []
+    if ex == "opencode":  # the same tree in OpenCode places
+        if (arm / "CLAUDE.md").exists():
+            shutil.copy(arm / "CLAUDE.md", ws / "AGENTS.md")
+            lines.append("/AGENTS.md")
+        if (arm / "skills").is_dir():
+            shutil.copytree(arm / "skills", ws / ".opencode" / "skills", dirs_exist_ok=True)
+        if (arm / "settings.json").exists() and "guard.sh" in (arm / "settings.json").read_text(encoding="utf-8"):
+            (ws / ".opencode" / "plugins").mkdir(parents=True, exist_ok=True)
+            body = (KIT / "hooks" / "opencode-guard.js").read_text(encoding="utf-8").replace("${KIT}", posix(KIT))
+            (ws / ".opencode" / "plugins" / "harness-guard.js").write_text(body, encoding="utf-8", newline="\n")
+        if (ws / ".opencode").exists():
+            lines.append("/.opencode/")
+        with exclude.open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write("\n".join(lines) + "\n")
+        return
     if (arm / "CLAUDE.md").exists():
         shutil.copy(arm / "CLAUDE.md", ws / "CLAUDE.md")
         lines.append("/CLAUDE.md")
@@ -128,11 +155,43 @@ def prepare(task: str, ws: Path) -> None:
         subprocess.run([sys.executable, str(TASKS / task / "setup.py")], cwd=ws, check=True, capture_output=True)
 
 
+def parse_opencode(lines: list, out: dict) -> dict:
+    """OpenCode --format json: tool parts with a state, step-finish parts with cost and tokens (as harness2 reads it)."""
+    for e in lines:
+        p = e.get("part") if isinstance(e.get("part"), dict) else {}
+        t = p.get("type") or e.get("type")
+        if t == "tool":
+            out["calls"] += 1
+            st = p.get("state") if isinstance(p.get("state"), dict) else {}
+            if st.get("status") == "error":
+                msg = str(st.get("error", ""))
+                out["blocked" if "Blocked by" in msg else "tool_errors"] += 1
+        elif t in ("step-finish", "step_finish"):
+            out["turns"] += 1
+            out["cost_usd"] += float(p.get("cost") or 0)
+            tok = p.get("tokens") or {}
+            out["tokens_in"] += int(tok.get("input") or 0)
+            out["tokens_out"] += int(tok.get("output") or 0) + int(tok.get("reasoning") or 0)
+            out["tokens_cache_read"] += int((tok.get("cache") or {}).get("read") or 0)
+        elif e.get("type") == "error":
+            out["result_error"] = True
+            out["subtype"] = str((e.get("error") or {}).get("message", ""))[:120]
+    return out
+
+
 def parse_stream(path: Path) -> dict:
     out = {"calls": 0, "tool_errors": 0, "blocked": 0, "denied": 0, "cost_usd": 0.0, "turns": 0, "duration_ms": 0,
            "tokens_in": 0, "tokens_out": 0, "tokens_cache_read": 0, "result_error": False, "subtype": ""}
     if not path.exists():
         return out
+    events = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            pass
+    if any("part" in e for e in events if isinstance(e, dict)):
+        return parse_opencode(events, out)
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             e = json.loads(line)
@@ -160,13 +219,15 @@ def parse_stream(path: Path) -> dict:
 
 
 def rollout(task: str, arm_name: str, arm: Path, rep: int, out: Path, model: str, budget_usd_per_run: float, keep: bool) -> dict:
-    rd = out / "runs" / Path(arm_name).name / task / str(rep)
+    # absolute: check.py runs parts of itself from the workspace, a relative --out pointed there (q07 failed 10 of 10)
+    rd = (Path(out) / "runs" / Path(arm_name).name / task / str(rep)).resolve()
     if (rd / "result.json").exists():  # resume
         return {**json.loads((rd / "result.json").read_text(encoding="utf-8")), "_resumed": True}
     rd.mkdir(parents=True, exist_ok=True)
     ws = Path(tempfile.mkdtemp(prefix=f"sh-bench-{task}-")) / "w"
     prepare(task, ws)
-    install_arm(arm, ws)
+    ex = executor(model)
+    install_arm(arm, ws, ex)
     meta = json.loads((TASKS / task / "meta.json").read_text(encoding="utf-8"))
     prompt = (TASKS / task / "task.md").read_text(encoding="utf-8").strip() + "\n\nWork in the current directory. Do not ask questions: decide and finish the task. When done, reply DONE."
     env = dict(os.environ, HARNESS_HOME=str(rd / "harness"), HARNESS_ERRORS="1")
@@ -177,7 +238,13 @@ def rollout(task: str, arm_name: str, arm: Path, rep: int, out: Path, model: str
     cmd = [shutil.which("claude") or "claude", "-p", "--output-format", "stream-json", "--verbose", "--model", model,
            "--setting-sources", "project", "--permission-mode", "acceptEdits", "--allowedTools", TOOLS,
            "--max-budget-usd", str(budget_usd_per_run), "--no-session-persistence"]
-    if os.environ.get("HARNESS_BENCH_EXECUTOR") == "fake":  # no model: the reference solution or the trap
+    if ex == "opencode":  # any provider; the user config stays out, the provider login (auth.json) stays in
+        cfg = tempfile.mkdtemp(prefix="sh-bench-oc-")
+        env.update(XDG_CONFIG_HOME=cfg, HARNESS_BASH=posix(shutil.which("bash") or "bash"),
+                   OPENCODE_PERMISSION=json.dumps({"external_directory": {"*": "deny", posix(ws): "allow", posix(ws) + "/**": "allow"}}))
+        cmd = [shutil.which("opencode") or "opencode", "run", "--model", model, "--format", "json", "--auto", prompt]
+        isolated = True
+    if ex == "fake":  # no model: the reference solution or the trap
         cmd = [sys.executable, str(BENCH / "fake_agent.py")]
         env["HARNESS_BENCH_TASK_DIR"] = str(TASKS / task)
     t0 = time.time()
@@ -198,7 +265,7 @@ def rollout(task: str, arm_name: str, arm: Path, rep: int, out: Path, model: str
     events = [json.loads(l) for f in (rd / "harness" / "errors").glob("*.jsonl") for l in f.read_text(encoding="utf-8").splitlines() if l.strip()] \
         if (rd / "harness" / "errors").is_dir() else []
     res = {"task": task, "arm": Path(arm_name).name, "rep": rep, "split": meta["split"], "kind": meta["kind"], "model": model,
-           "isolated": isolated, "rc": rc, "stderr": err, "wall_s": round(wall, 1), "pass": bool(check.get("pass")),
+           "isolated": isolated, "executor": ex, "rc": rc, "stderr": err, "wall_s": round(wall, 1), "pass": bool(check.get("pass")),
            "trap": check.get("trap", "n/a"), "check": check.get("details", {}), **parse_stream(rd / "stream.jsonl"),
            "barrier_events": len(events), "barrier_asked": sum(1 for e in events if e.get("outcome") == "asked"),
            "ts": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
@@ -222,7 +289,8 @@ def run(a) -> int:
     spent = [sum(json.loads(p.read_text(encoding="utf-8")).get("cost_usd", 0) for p in out.glob("runs/*/*/*/result.json"))]
     (out / "config.json").write_text(json.dumps({"arms": list(arms), "tasks": tasks(a.tasks), "reps": a.reps, "model": a.model,
                                                  "budget_rub": a.budget_rub, "usd_rub": rate, "rate_source": src,
-                                                 "isolated": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                                                 "isolated": bool(os.environ.get("ANTHROPIC_API_KEY")) or executor(a.model) == "opencode",
+                                                 "executor": executor(a.model),
                                                  "claude": subprocess.run([shutil.which("claude") or "claude", "--version"], capture_output=True, text=True, encoding="utf-8").stdout.strip(),
                                                  "kit_commit": git(KIT, "rev-parse", "--short", "HEAD").stdout.strip()},
                                                 ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
