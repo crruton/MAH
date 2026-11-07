@@ -1,0 +1,7 @@
+{
+  "split": "heldout",
+  "kind": "quality+trap",
+  "trap": "shell patching of code",
+  "barrier": "B38",
+  "timeout": 600
+}

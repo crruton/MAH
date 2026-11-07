@@ -292,3 +292,18 @@ The agent that wrote this kit made these errors. Each one became a barrier or a 
 - ADR: -
 - Status: closed
 - Closed: 2026-11-06
+
+## INC-2026-11-07-01: a heredoc patch lost one level of escapes, the third time
+- Date: 2026-11-07
+- Agent: claude-code
+- Found by: review
+- Where: h2/h2.py while building the Harness² step
+- Symptom: the patch had a double-escaped "\\n" in a Python string; the file got a real line break and a SyntaxError
+- Cause: the patch went bash heredoc -> Python source -> file. B38 checked only the shell syntax, and the heredoc was valid shell
+- Class: tooling, repeat
+- Barrier: B38 denies a heredoc into python, node, ruby or perl, or into a code file (`cat > x.py <<`), when the body has a double escape (two backslashes before n or t). The second form happened the same day in the patch for --auto-evolve. The level that drops the escape is the tool call of the agent, not bash: even a quoted heredoc lost it, so this entry itself was written with the Edit tool
+- Level: hook
+- Repro: tests/test_loop.py test_shell_patching_of_code_is_denied
+- ADR: -
+- Status: closed
+- Closed: 2026-11-07

@@ -48,7 +48,9 @@ def test_shell_patching_of_code_is_denied():  # INC-2026-11-06-03, -08, -13
     import json
     bash = shutil.which("bash") or "bash"  # a bare "bash" starts WSL on Windows (B22)
     for cmd, want in (("python - <<'PY'\nprint('x')\nPY\necho 'unclosed", 2), ("python - <<'PY'\nprint(\"it's ok\")\nPY", 0),
-                      ("sed -i 's/x/newline=\"\\n\")/' tests/t.py", 2), ("sed -i 's/old/new/' src/app.py", 0)):  # INC-2026-11-06-13
+                      ("sed -i 's/x/newline=\"\\n\")/' tests/t.py", 2), ("sed -i 's/old/new/' src/app.py", 0),  # INC-2026-11-06-13
+                      ("python - x.py <<'PY'\nlow = '\\\\n'.join(a)\nPY", 2), ("python - <<'PY'\nprint('a\\nb')\nPY", 0),  # INC-2026-11-07-01
+                      ("cat > patch.py <<'PYEOF'\nx = 'a\\\\nb'\nPYEOF", 2), ("cat > notes.md <<'EOF'\nuse \\\\n in docs\nEOF", 0)):
         r = subprocess.run([bash, str(ROOT / "hooks" / "guard.sh")], input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}),
                            capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == want, (cmd, r.returncode, r.stderr)

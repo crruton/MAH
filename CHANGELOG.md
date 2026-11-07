@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0] - 2026-11-07
+
+### Added
+- `bench/`: A/B of harnesses on 8 dev tasks with agent traps (test weakening, cut code, reset of uncommitted work, a secret in .env, a skipped hook, a folder checkout, a file without encoding, shell patching). One model, only the harness changes; hidden check.py, repeats, Wilson and bootstrap 95% intervals, rubles at the Bank of Russia rate, train and held-out tasks. `./harness.sh bench run|report`. Each task has a reference solution and a trap for tests with no model.
+- `h2/`: the Harness² method (google-research/harness2) on the bench: propose an invariant and a domain edit, probe both on the same tasks, compose from the behavioural contrast with no ground truth, keep lessons in h2/library; the gate on held-out tasks decides; adopt goes through a MR. `./harness.sh h2 step|gate|adopt`.
+- `install --auto-evolve`: SessionEnd runs evolve in repositories with error.md, SessionStart tells the agent that harness tasks wait.
+- tests/test_bench.py: the bench and an h2 step without a model, in CI. A manual CI job runs the bench with a real model when the secret ANTHROPIC_API_KEY is set.
+- docs/BENCH.md: the inputs, the commands, what each number proves, the differences from upstream harness2, the cost.
+
+### Changed
+- B38 also denies a heredoc into an interpreter or into a code file with a double escape (INC-2026-11-07-01).
+- The talk: slide 20 is the Harness² step, slide 20а is the A/B proof; harness2 is a transferred method, not a deployed framework.
+
 ## [1.2.0] - 2026-11-06
 
 ### Added

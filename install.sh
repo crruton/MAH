@@ -9,6 +9,7 @@
 #     ~/.claude/settings.json    2 hook entries are added; other keys and hooks stay; backup first
 #     --rules                    also import templates/AGENTS.global.md into ~/.claude/CLAUDE.md
 #     --no-tool-errors           no PostToolUse collector (saves ~50 ms on each tool call)
+#     --auto-evolve              SessionEnd runs evolve in repositories with error.md; SessionStart tells the agent
 #
 # Project (optional, for a team): git hooks and CI gates in one repository.
 #   bash install.sh --project <repo> [--team-store] [--lock]
@@ -27,13 +28,14 @@ HH="$H/harness"
 win() { command -v cygpath >/dev/null 2>&1 && cygpath -m "$1" || printf '%s' "$1"; }
 SKILLS="error-to-rule adr-decision harness-review ste-writing change-pipeline"
 
-mode=global repo="" rules=0 tool_errors=1 team=0 lock=0 purge=0
+mode=global repo="" rules=0 tool_errors=1 team=0 lock=0 purge=0 auto=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) mode=project; repo="${2:?--project needs a path}"; shift 2 ;;
     --uninstall) mode=uninstall; shift ;;
     --rules) rules=1; shift ;;
     --no-tool-errors) tool_errors=0; shift ;;
+    --auto-evolve) auto=1; shift ;;
     --team-store) team=1; shift ;;
     --lock) lock=1; shift ;;
     --purge) purge=1; shift ;;
@@ -44,7 +46,7 @@ done
 
 global_install() {
   mkdir -p "$HH/hooks" "$HH/bin" "$HH/errors" "$H/skills"
-  cp "$kit/hooks/guard.sh" "$kit/hooks/collect-tool-errors.sh" "$HH/hooks/"
+  cp "$kit/hooks/guard.sh" "$kit/hooks/collect-tool-errors.sh" "$kit/hooks/session-end.sh" "$kit/hooks/session-start.sh" "$HH/hooks/"
   cp "$kit/gates/collect.py" "$kit/metrics/errors.py" "$kit/metrics/budget.py" "$kit/metrics/dashboard.py" "$HH/bin/"
   chmod +x "$HH"/hooks/*.sh
   touch "$HH/installed-skills.txt"
@@ -55,9 +57,10 @@ global_install() {
     mkdir -p "$H/skills/$n" && cp "$kit/skills/$n/SKILL.md" "$H/skills/$n/"
     grep -qxF "$n" "$HH/installed-skills.txt" || echo "$n" >> "$HH/installed-skills.txt"
   done
-  local collector=""
+  local collector="-" loop=()
   [ $tool_errors = 1 ] && collector="$(win "$HH/hooks/collect-tool-errors.sh")"
-  "$PY" "$kit/lib/claude_settings.py" add "$H/settings.json" "$(win "$HH/hooks/guard.sh")" $collector
+  [ $auto = 1 ] && loop=("$(win "$HH/hooks/session-end.sh")" "$(win "$HH/hooks/session-start.sh")")
+  "$PY" "$kit/lib/claude_settings.py" add "$H/settings.json" "$(win "$HH/hooks/guard.sh")" "$collector" "${loop[@]}"
   if [ $rules = 1 ]; then
     cp "$kit/templates/AGENTS.global.md" "$HH/AGENTS.md"
     local line="@$(win "$HH/AGENTS.md")"

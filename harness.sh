@@ -9,6 +9,8 @@
 #   ./harness.sh budget [--repo PATH]  tokens and hook latency that the harness costs
 #   ./harness.sh dashboard [--repo PATH]  HTML: does the agent make fewer errors, faster, cheaper
 #   ./harness.sh evolve <repo> [--dry-run]  one turn of the loop: draft incidents, tasks for the agent
+#   ./harness.sh bench run|report ...  A/B of harnesses on dev tasks with hidden checks (see docs/BENCH.md)
+#   ./harness.sh h2 step|gate|adopt ...  Harness²: the harness proposes, probes and composes its own edit
 #   ./harness.sh doctor                check the machine and the install
 #   ./harness.sh project <repo> [--team-store] [--lock]   optional: git hooks and CI gates
 #   ./harness.sh check <repo>          run the CI gates of a project
@@ -90,6 +92,8 @@ run() { # run <command> <args...>
     errors)    shift; "$PY" "$KIT/metrics/errors.py" --repo "$PWD" "$@" ;;
     budget)    shift; "$PY" "$KIT/metrics/budget.py" "$@" ;;
     dashboard) shift; "$PY" "$KIT/metrics/dashboard.py" --repo "$PWD" "$@" ;;
+    bench)     shift; "$PY" "$KIT/bench/run.py" "$@" ;;
+    h2)        shift; "$PY" "$KIT/h2/h2.py" "$@" ;;
     evolve)    r="$(need_repo "${2:-$PWD}")" || return 1; shift; [ $# -gt 0 ] && shift; "$PY" "$KIT/metrics/dashboard.py" --evolve "$r" "$@" ;;
     doctor)    cmd_doctor ;;
     check)     r="$(need_repo "${2:-}")" || return 1; (cd "$r" && bash gates/run-all.sh) ;;

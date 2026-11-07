@@ -31,14 +31,16 @@ def ours(entry: dict) -> bool:
     return any(MARK in (h.get("command") or "").replace("\\", "/") for h in entry.get("hooks", []))
 
 
-def add(p: Path, guard: str, collector: str = "") -> int:
+def add(p: Path, guard: str, collector: str = "", session_end: str = "", session_start: str = "") -> int:
     data = load(p)
     if p.exists():
         shutil.copy2(p, p.with_name(f"{p.name}.bak-harness-{dt.datetime.now():%Y%m%d-%H%M%S}"))
     hooks = data.setdefault("hooks", {})
     want = [("PreToolUse", "Bash|Read|Edit|MultiEdit|Write|NotebookEdit", guard)]
-    if collector:
+    if collector and collector != "-":
         want.append(("PostToolUse", "*", collector))
+    if session_end:  # --auto-evolve
+        want += [("SessionEnd", "*", session_end), ("SessionStart", "*", session_start)]
     added = 0
     for event, matcher, script in want:
         lst = hooks.setdefault(event, [])
@@ -47,7 +49,7 @@ def add(p: Path, guard: str, collector: str = "") -> int:
             for e in mine:  # an upgrade keeps the entry and gets the new matcher
                 e["matcher"] = matcher
             continue
-        lst.append({"matcher": matcher, "hooks": [{"type": "command", "command": f'bash "{script}"', "timeout": 10}]})
+        lst.append({"matcher": matcher, "hooks": [{"type": "command", "command": f'bash "{script}"', "timeout": 60 if event == "SessionEnd" else 10}]})
         added += 1
     save(p, data)
     print(f"{p}: {added} hook entries added")
@@ -85,4 +87,4 @@ if __name__ == "__main__":
     if len(sys.argv) < 3 or sys.argv[1] not in ("add", "remove", "show"):
         sys.exit(__doc__)
     cmd, path = sys.argv[1], Path(sys.argv[2])
-    sys.exit({"add": lambda: add(path, *sys.argv[3:5]), "remove": lambda: remove(path), "show": lambda: show(path)}[cmd]())
+    sys.exit({"add": lambda: add(path, *sys.argv[3:7]), "remove": lambda: remove(path), "show": lambda: show(path)}[cmd]())

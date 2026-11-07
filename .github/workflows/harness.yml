@@ -4,8 +4,39 @@ on:
   push:
     branches: [dev, main]
   pull_request:
+  workflow_dispatch:  # the bench with a real model: needs the secret ANTHROPIC_API_KEY
+    inputs:
+      reps: {description: "repeats per task and arm", default: "3"}
+      model: {description: "executor model", default: "claude-haiku-5-5"}
+      budget_rub: {description: "stop when the spend reaches this, rubles", default: "1500"}
 
 jobs:
+  bench:
+    name: bench with a real model (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: sudo apt-get install -y jq && npm install -g @anthropic-ai/claude-code
+      - name: none vs self, every task
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python bench/run.py run --arms none,self --reps "${{ inputs.reps }}" --model "${{ inputs.model }}" --budget-rub "${{ inputs.budget_rub }}" --out bench/results/ci
+          python bench/run.py report --out bench/results/ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/ci
+
+
   demo:
     name: 36 attacks stop, 17 normal actions pass
     runs-on: ubuntu-latest
@@ -20,6 +51,8 @@ jobs:
         run: test -z "$(ls "$HOME/.claude/harness/errors" 2>/dev/null)" && test -z "$(ls .harness/errors/*.jsonl 2>/dev/null | xargs -r git status --porcelain --)"
       - name: repro tests of the loop  # tests/test_loop.py
         run: python tests/test_loop.py
+      - name: bench and Harness² without a model  # each task solvable, each trap seen, h2 step and gate
+        run: python tests/test_bench.py
 
   global-install:
     name: global install, idempotent, clean uninstall

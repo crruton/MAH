@@ -532,7 +532,7 @@ h.addEventListener('mouseleave',function(){tip.hidden=true;});});});
 """
 
 
-def evolve(r, repo: Path, dry: bool = False) -> int:
+def evolve(r, repo: Path, dry: bool = False, tasks_file: str = "") -> int:
     """One turn of the loop with no human: draft incidents for new candidates, tasks for the agent.
     The agent closes a draft with the error-to-rule skill; a human reviews the barrier in the MR."""
     log = repo / "error.md"
@@ -574,6 +574,8 @@ def evolve(r, repo: Path, dry: bool = False) -> int:
     tasks += [f"{l['id']}: {l['state']}. Make the barrier stop the class, not the case"
               for l in r["loop"] if l["tone"] == "serious" and later_open(l)]
     tasks += [f"{l['id']}: only a text rule. Find a check that a machine can run" for l in r["loop"] if l["state"].startswith("только текст")]
+    if tasks_file and not dry:  # session-start.sh shows these to the next session
+        Path(tasks_file).write_text("".join(f"- {t}\n" for t in tasks), encoding="utf-8", newline="\n")
     if tasks:
         print("Tasks for the agent (paste them into the agent session):")
         for t in tasks:
@@ -591,11 +593,12 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--evolve", metavar="REPO", help="draft incidents in REPO/error.md and print tasks for the agent")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--tasks-file", default="")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     r = build([Path(x) for x in a.repo + ([a.evolve] if a.evolve else [])], a.weeks)
     if a.evolve:
-        return evolve(r, Path(a.evolve).resolve(), a.dry_run)
+        return evolve(r, Path(a.evolve).resolve(), a.dry_run, a.tasks_file)
     if a.json:
         print(json.dumps({"totals": r["totals"], "weeks": r["weeks"], "loop": r["loop"], "candidates": r["candidates"],
                           "proactive": r["proactive"]}, ensure_ascii=False, indent=2))

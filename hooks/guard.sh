@@ -95,6 +95,11 @@ if [[ $cmd == *"<<"* || ${#cmd} -gt 400 ]]; then
   if [[ $raw == *$'\n'* ]] && ! syn=$(bash -n -c "$raw" 2>&1); then
     deny B38 guard-syntax "the command has a shell syntax error (${syn##*: }). Write the script to a file with the Write tool, then run the file." "$syn"
   fi
+  # a heredoc into an interpreter with a double escape: "\\n" in the patch becomes a real line break in the code
+  INTERP="(python3?|py|node|ruby|perl)([[:space:]][^<]*)?<<|[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)[[:space:]]*<<|<<-?[[:space:]]*['\"]?[A-Za-z_]+['\"]?[[:space:]]*[>][[:space:]]*[^[:space:]]+\.(py|js|mjs|cjs|ts|rb|pl)([[:space:]]|$)"
+  if [[ $raw =~ $INTERP && $raw == *'\\n'* || $raw =~ $INTERP && $raw == *'\\t'* ]]; then
+    deny B38 guard-syntax "a heredoc script for an interpreter has a double escape (\\\\n or \\\\t). One level of escapes is lost on the way into the code (INC-2026-11-07-01). Write the script to a file with the Write tool, then run the file." "$raw"
+  fi
 fi
 # B38 deny: sed -i with escapes in a code file. Two shells change \n into a real line break (INC-2026-11-06-13).
 SEDCODE="(^|[;&|][[:space:]]*)sed[[:space:]]([^;&|]*[[:space:]])?-[a-zA-Z]*i[^;&|]*\\\\[nt\\\\][^;&|]*\.(py|js|mjs|cjs|ts|tsx|jsx|go|java|kt|rb|php|rs|cs|c|cc|cpp|h|swift)([[:space:]]|$|[;&|])"

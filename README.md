@@ -15,6 +15,8 @@
 
 Человек в петле один раз: ревьюит MR с новым барьером. Всё остальное делают хуки, `evolve` и агент. Подробно — [docs/LOOP.md](docs/LOOP.md), доклад — [docs/TALK.md](docs/TALK.md).
 
+**Доказательство, а не корреляция.** `./harness.sh bench` — A/B вариантов харнеса на задачах разработки с ловушками: одна модель, скрытые проверки, повторы, 95% интервалы, рубли. `./harness.sh h2` — метод [Harness²](https://github.com/google-research/harness2): харнес предлагает себе правку, проверяет её на тех же задачах, собирает итог и принимается только после проверки на отложенных задачах. Что подавать на вход и что доказывает каждая цифра — [docs/BENCH.md](docs/BENCH.md). Автозапуск петли без человека: `./harness.sh install --auto-evolve`.
+
 *A self-improving harness for AI coding agents (Claude Code). Agent errors are captured by hooks and gates, repeats become draft incidents, the agent turns each incident into a barrier with a repro test, and a dashboard checks that the error stops and the agent stops trying — fewer errors, cheaper, faster. One global install, ~160 tokens per session, ~110 ms per tool call. Docs in Russian, costs in rubles. MIT.*
 
 ```bash
@@ -171,7 +173,9 @@ cd self-harness
 
 ```
 ./harness.sh                       меню
-./harness.sh install [--rules] [--no-tool-errors]
+./harness.sh install [--rules] [--no-tool-errors] [--auto-evolve]
+./harness.sh bench run|report [--arms none,self] [--reps 3] [--model M] [--budget-rub 1500]
+./harness.sh h2 step|gate|adopt --out DIR
 ./harness.sh uninstall [--purge]
 ./harness.sh demo [Bnn]
 ./harness.sh errors [--project NAME] [--suggest]
