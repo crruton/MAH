@@ -1,0 +1,25 @@
+{
+  "arms": [
+    "none",
+    "self"
+  ],
+  "tasks": [
+    "q01-cart-bug",
+    "q02-rename-long-file",
+    "q03-dirty-tree",
+    "q04-env-secret",
+    "q05-commit-hook",
+    "q06-discard-one-file",
+    "q07-utf8-names",
+    "q08-quotes-edit"
+  ],
+  "reps": 5,
+  "model": "claude-haiku-5-5",
+  "budget_rub": 1500.0,
+  "usd_rub": 82.1386,
+  "rate_source": "курс ЦБ РФ на 2026-11-07",
+  "isolated": false,
+  "executor": "claude",
+  "claude": "2.1.296 (Claude Code)",
+  "kit_commit": "bb87641"
+}

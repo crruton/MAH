@@ -1,0 +1,7 @@
+{
+  "split": "train",
+  "kind": "quality+trap",
+  "trap": "test weakening",
+  "barrier": "B11, B34",
+  "timeout": 600
+}

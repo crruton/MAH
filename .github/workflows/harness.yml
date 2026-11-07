@@ -4,10 +4,41 @@ on:
   push:
     branches: [dev, main]
   pull_request:
+  workflow_dispatch:  # the bench with a real model: needs the secret ANTHROPIC_API_KEY
+    inputs:
+      reps: {description: "repeats per task and arm", default: "3"}
+      model: {description: "executor model", default: "claude-haiku-5-5"}
+      budget_rub: {description: "stop when the spend reaches this, rubles", default: "1500"}
 
 jobs:
-  barriers:
-    name: 27 barriers block their attacks
+  bench:
+    name: bench with a real model (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: sudo apt-get install -y jq && npm install -g @anthropic-ai/claude-code
+      - name: none vs self, every task
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python bench/run.py run --arms none,self --reps "${{ inputs.reps }}" --model "${{ inputs.model }}" --budget-rub "${{ inputs.budget_rub }}" --out bench/results/ci
+          python bench/run.py report --out bench/results/ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/ci
+
+
+  demo:
+    name: 36 attacks stop, 17 normal actions pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,6 +47,59 @@ jobs:
           python-version: "3.12"
       - run: sudo apt-get install -y jq
       - run: bash try-it.sh
+      - name: the demo does not write to the real error store  # INC-2026-11-05-08
+        run: test -z "$(ls "$HOME/.claude/harness/errors" 2>/dev/null)" && test -z "$(ls .harness/errors/*.jsonl 2>/dev/null | xargs -r git status --porcelain --)"
+      - name: repro tests of the loop  # tests/test_loop.py
+        run: python tests/test_loop.py
+      - name: bench and Harness² without a model  # each task solvable, each trap seen, h2 step and gate
+        run: python tests/test_bench.py
+
+  global-install:
+    name: global install, idempotent, clean uninstall
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y jq
+      - name: install twice, then uninstall
+        run: |
+          export CLAUDE_CONFIG_DIR=$(mktemp -d)
+          echo '{"hooks":{"SessionStart":[{"matcher":"*","hooks":[{"type":"command","command":"echo mine"}]}]},"model":"x"}' > "$CLAUDE_CONFIG_DIR/settings.json"
+          cp "$CLAUDE_CONFIG_DIR/settings.json" /tmp/before.json
+          ./harness.sh install --rules
+          ./harness.sh install --rules
+          test "$(python lib/claude_settings.py show "$CLAUDE_CONFIG_DIR/settings.json" | wc -l)" = 2
+          test "$(grep -c harness/AGENTS.md "$CLAUDE_CONFIG_DIR/CLAUDE.md")" = 1
+          ./harness.sh doctor
+          ./harness.sh budget
+          ./harness.sh uninstall --purge
+          python -c "import json,sys; a=json.load(open('/tmp/before.json')); b=json.load(open(sys.argv[1])); assert a==b, (a,b)" "$CLAUDE_CONFIG_DIR/settings.json"
+          ! grep -q harness/AGENTS.md "$CLAUDE_CONFIG_DIR/CLAUDE.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/skills/error-to-rule"
+
+  project:
+    name: project mode and launcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: project, incident, adr, check, errors
+        run: |
+          export CLAUDE_CONFIG_DIR=$(mktemp -d)
+          repo=$(mktemp -d)
+          git -C "$repo" init -q -b dev
+          git -C "$repo" -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m "Start the repository"
+          ./harness.sh project "$repo" --team-store --lock
+          ./harness.sh incident "$repo" "ci incident"
+          ./harness.sh adr "$repo" "CI decision"
+          adr="$repo/docs/adr/0001-ci-decision.md"
+          sed -i 's#^- \*\*Applies To:\*\*.*#- **Applies To:** `src/**`#; s#^- \*\*Reconsider When:\*\*.*#- **Reconsider When:** RPS above 100#' "$adr"
+          ./harness.sh check "$repo"
+          (cd "$repo" && "$GITHUB_WORKSPACE/harness.sh" errors)
 
   self-check:
     name: the kit passes its own gates
@@ -30,65 +114,27 @@ jobs:
         env:
           HARNESS_ALL: "1"
           HARNESS_ERRORS: "0"
-      - name: error log of the kit
-        run: python gates/check-error-log.py error.md
-      - name: error statistics build
-        run: python metrics/errors.py --repo . > /dev/null
-
-  ste:
-    name: agent-facing text follows ASD-STE100
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: python gates/check-ste.py --strict "skills/**/SKILL.md" templates/AGENTS.global.md templates/AGENTS.project.md templates/error.md templates/adr/index.md
-
-  mcp:
-    name: 10 MCP servers (mcp ${{ matrix.sdk }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        sdk: ["<2", ">=2"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: sudo apt-get install -y jq
-      - run: pip install "mcp${{ matrix.sdk }}" jsonschema
-      - run: python mcp/selftest.py
-
-  launcher:
-    name: launcher end to end
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: sudo apt-get install -y jq
-      - name: start, incident, adr, lock, check
-        run: |
-          repo=$(mktemp -d)
-          git -C "$repo" init -q -b dev
-          git -C "$repo" -c user.email=ci@example.com -c user.name=ci commit -q --allow-empty -m "Start the repository"
-          ./harness.sh start "$repo"
-          ./harness.sh incident "$repo" "ci incident"
-          ./harness.sh adr "$repo" "CI decision"
-          adr="$repo/docs/adr/0001-ci-decision.md"
-          sed -i 's#^- \*\*Applies To:\*\*.*#- **Applies To:** `src/**`#; s#^- \*\*Reconsider When:\*\*.*#- **Reconsider When:** RPS above 100#' "$adr"
-          ./harness.sh check "$repo"
-          test -f "$repo/docs/metrics.md"
-          ./harness.sh errors "$repo"
-          test -f "$repo/docs/errors.md"
-          ./harness.sh budget "$repo"
-          full=$(mktemp -d)
-          git -C "$full" init -q
-          ./harness.sh install "$full" --profile full
-          test -f "$full/.mcp.json" && test -f "$full/.claude/skills/async-boundary/SKILL.md"
+      - run: python gates/check-error-log.py error.md
+      - run: python metrics/errors.py --repo . > /dev/null
+      - run: python gates/check-ste.py --strict "skills/**/SKILL.md" "extras/skills/**/SKILL.md" templates/AGENTS.global.md templates/AGENTS.project.md templates/error.md templates/adr/index.md
       - name: syntax
         run: |
           for f in harness.sh install.sh try-it.sh gates/*.sh hooks/*.sh hooks/pre-push hooks/commit-msg; do bash -n "$f"; done
-          python -m py_compile gates/*.py metrics/*.py mcp/selftest.py mcp/servers/*.py
+          python -m py_compile gates/*.py metrics/*.py lib/*.py extras/mcp/selftest.py extras/mcp/servers/*.py
+
+  extras-mcp:
+    name: extras — 10 MCP servers (mcp ${{ matrix.sdk }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sdk: ["<2", ">=2,<3"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y jq
+      - run: pip install "mcp${{ matrix.sdk }}" "jsonschema>=4,<5"
+      - run: python extras/mcp/selftest.py
+        env:
+          HARNESS_ERRORS: "0"

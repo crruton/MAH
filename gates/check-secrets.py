@@ -16,7 +16,8 @@ PATTERNS = [
     ("private key", re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY")),
     ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("GitHub token", re.compile(r"\b(ghp|gho|ghs|ghu)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,}")),
-    ("GitLab token", re.compile(r"\bglpat-[A-Za-z0-9_\-]{20}\b")),
+    # 20 characters in old tokens; new tokens are longer and have dots (INC-2026-11-06-11)
+    ("GitLab token", re.compile(r"\bgl(pat|dt|rt|ptt|cbt|soat)-[A-Za-z0-9_\-.]{20,}")),
     ("Slack token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}")),
     ("OpenAI-style key", re.compile(r"\bsk-[A-Za-z0-9_\-]{32,}")),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),

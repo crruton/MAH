@@ -7,6 +7,7 @@ Changed files and added lines come from, in order:
   4. all tracked files (a repository with one commit)
 """
 import os
+import re
 import subprocess
 import sys
 
@@ -20,7 +21,13 @@ GATE_BARRIER = {
     "check-adr-numbers": "B13", "check-adr-fields": "B14", "check-adr-links": "B15",
     "check-error-log": "B16", "check-rules-size": "B17", "check-ste": "B18",
     "check-zones": "B19", "check-harness-integrity": "B20",
+    "check-test-deletion": "B34", "check-suppressions": "B35", "check-leftovers": "B36", "check-lockfile-sync": "B37",
 }
+# Test files of common stacks: Go, JS/TS, Python, Ruby, PHP, Java/Kotlin/Scala, C#, Swift, Rust, Elixir, Dart, C/C++
+TEST_FILE = re.compile(
+    r"(_test\.(go|py|rb|exs|dart|cpp|cc|c)|\.(test|spec)\.[cm]?[jt]sx?|(^|/)test_[^/]+\.py|_spec\.rb|"
+    r"(Test|Tests|IT|Spec)\.(java|kt|scala|cs|php|swift)|(^|/)tests/[^/]+\.rs)$")
+
 
 
 def git(*args: str) -> str:
@@ -47,6 +54,13 @@ def changed_files() -> list:
         return [f for f in git("ls-files").splitlines() if f]
     out = git("diff", "--name-only", "--diff-filter=ACMR", *rng)
     return [f for f in out.splitlines() if f]
+
+
+def deleted_files() -> list:
+    rng = _range()
+    if not rng:
+        return []
+    return [f for f in git("diff", "--name-only", "--diff-filter=D", *rng).splitlines() if f]
 
 
 def added_and_removed(path: str):

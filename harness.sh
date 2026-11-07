@@ -1,241 +1,139 @@
 #!/usr/bin/env bash
-# self-harness launcher: one entry point for the whole process.
+# self-harness launcher.
 #
-#   ./harness.sh                     interactive menu
-#   ./harness.sh start  <repo> [--profile core|full] [--mcp a,b]   one button: doctor, install, check, metrics
-#   ./harness.sh doctor              check prerequisites
-#   ./harness.sh demo [Bnn]          27 barriers (or one) attacked on a throwaway repo
-#   ./harness.sh barriers            list the 27 barriers
-#   ./harness.sh errors   <repo> [--suggest]   error statistics -> <repo>/docs/errors.md
-#   ./harness.sh budget   <repo>     tokens and hook latency that the harness costs the agent
-#   ./harness.sh install  <repo> [--profile core|full] [--mcp a,b] [--skills process|all]
-#   ./harness.sh check    <repo>     run all gates
-#   ./harness.sh metrics  <repo>     weekly convergence metrics -> <repo>/docs/metrics.md
-#   ./harness.sh incident <repo> "title"   new error.md entry with the next INC id
-#   ./harness.sh adr      <repo> "title"   new ADR with the next free number
-#   ./harness.sh loadtest <url> [rps]      k6 ramp to <rps> (default 100) in Docker
-#   ./harness.sh lock     <repo>     accept a reviewed harness change (write harness.lock)
+#   ./harness.sh                       menu
+#   ./harness.sh install [--rules]     global install: once per machine, all projects
+#   ./harness.sh uninstall [--purge]   remove the global install
+#   ./harness.sh demo [Bnn]            36 attacks and 17 normal actions on throwaway folders
+#   ./harness.sh errors [--project NAME] [--suggest]   error statistics of all projects
+#   ./harness.sh budget [--repo PATH]  tokens and hook latency that the harness costs
+#   ./harness.sh dashboard [--repo PATH]  HTML: does the agent make fewer errors, faster, cheaper
+#   ./harness.sh evolve <repo> [--dry-run]  one turn of the loop: draft incidents, tasks for the agent
+#   ./harness.sh bench run|report ...  A/B of harnesses on dev tasks with hidden checks (see docs/BENCH.md)
+#   ./harness.sh h2 step|gate|adopt ...  Harness²: the harness proposes, probes and composes its own edit
+#   ./harness.sh doctor                check the machine and the install
+#   ./harness.sh project <repo> [--team-store] [--lock]   optional: git hooks and CI gates
+#   ./harness.sh check <repo>          run the CI gates of a project
+#   ./harness.sh incident <repo> "what happened"          new error.md entry
+#   ./harness.sh adr <repo> "decision"                    new ADR with the next free number
+#   ./harness.sh lock <repo>           accept a reviewed change of hooks or gates
+#   ./harness.sh metrics <repo>        weekly convergence from git history
 set -uo pipefail
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="$(command -v python3 || command -v python || true)"
+H="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 if [ -t 1 ]; then B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; N=$'\e[0m'; else B= G= Y= R= N=; fi
-
-say()  { printf '%s\n' "$*"; }
 ok()   { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
 err()  { printf '  %s✗%s %s\n' "$R" "$N" "$*" >&2; }
-head_() { printf '\n%s== %s ==%s\n' "$B" "$*" "$N"; }
+help_() { awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; }
 
 need_repo() {
-  local repo="${1:-}"
-  [ -n "$repo" ] || { err "укажите путь к репозиторию"; return 1; }
-  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || { err "$repo — не git-репозиторий"; return 1; }
-  (cd "$repo" && pwd)
+  [ -n "${1:-}" ] || { err "give the path to a repository"; return 1; }
+  git -C "$1" rev-parse --git-dir >/dev/null 2>&1 || { err "$1 is not a git repository"; return 1; }
+  (cd "$1" && pwd)
 }
 
-slug() { # lowercase latin slug; Cyrillic is transliterated
-  if [ -n "$PY" ]; then
-    "$PY" -c 'import re,sys
+slug() {
+  "$PY" -c 'import re,sys
 t=dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",["a","b","v","g","d","e","e","zh","z","i","y","k","l","m","n","o","p","r","s","t","u","f","h","ts","ch","sh","sch","","y","","e","yu","ya"]))
 s="".join(t.get(c,c) for c in sys.argv[1].lower())
 print(re.sub(r"[^a-z0-9]+","-",s).strip("-")[:48])' "$1"
-  else
-    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-48
-  fi
 }
 
 cmd_doctor() {
-  head_ "Проверка окружения"
-  local rc=0
-  for t in git bash; do command -v "$t" >/dev/null && ok "$t" || { err "$t не найден"; rc=1; }; done
-  if [ -n "$PY" ]; then ok "python: $("$PY" --version 2>&1)"; else err "python 3 не найден"; rc=1; fi
-  command -v jq >/dev/null && ok "jq (нужен хуку guard-tests для Claude Code)" || warn "jq не найден: хук guard-tests в Claude Code не сработает"
-  command -v docker >/dev/null && ok "docker (для loadtest)" || warn "docker не найден: loadtest недоступен"
-  command -v claude >/dev/null && ok "Claude Code" || warn "Claude Code не найден (необязательно)"
-  command -v opencode >/dev/null && ok "OpenCode" || warn "OpenCode не найден (необязательно)"
-  [ -f "$HOME/.claude/CLAUDE.md" ] && ok "глобальный слой: ~/.claude/CLAUDE.md" || warn "нет ~/.claude/CLAUDE.md — положите туда templates/AGENTS.global.md"
-  return $rc
-}
-
-cmd_demo() {
-  head_ "Демо: атаки на барьеры"
-  if [ -n "${1:-}" ]; then bash "$KIT/try-it.sh" --only "$1"; else bash "$KIT/try-it.sh"; fi
-}
-
-cmd_barriers() { head_ "27 барьеров"; bash "$KIT/try-it.sh" --list | awk -F'\t' '{printf "  %-4s %-32s %s\n", $1, $2, $3}'; }
-
-cmd_lock() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
-  head_ "Принять изменение харнеса: $repo"
-  (cd "$repo" && "$PY" gates/checks.py lock) && ok "harness.lock обновлён — закоммитьте его вместе с изменением"
-}
-
-cmd_install() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
-  head_ "Установка в $repo"
-  bash "$KIT/install.sh" "$repo" "$@"
-}
-
-cmd_errors() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
-  head_ "Статистика ошибок: $repo"
-  if [ "${1:-}" = "--suggest" ]; then "$PY" "$KIT/metrics/errors.py" --repo "$repo" --suggest; return; fi
-  "$PY" "$KIT/metrics/errors.py" --repo "$repo" --out docs/errors.md | sed -n "1,40p"
-  ok "полный отчёт: docs/errors.md"
-}
-
-cmd_budget() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
-  "$PY" "$KIT/metrics/budget.py" --repo "$repo"
-}
-
-cmd_check() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
-  head_ "Гейты в $repo"
-  [ -f "$repo/gates/run-all.sh" ] || { err "гейты не установлены: ./harness.sh install $repo"; return 1; }
-  (cd "$repo" && bash gates/run-all.sh)
-}
-
-cmd_metrics() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1
-  head_ "Метрики сходимости: $repo"
-  [ -n "$PY" ] || { err "нужен python 3"; return 1; }
-  mkdir -p "$repo/docs"
-  local out="$repo/docs/metrics.md"
-  {
-    printf '# Метрики сходимости харнеса\n\nОбновлено: %s. Команда: `./harness.sh metrics .`\n\n' "$(date +%F)"
-    printf 'Хороший тренд: доля исправлений падает, пункты правил на плато, ADR и тесты растут.\n\n'
-    "$PY" "$KIT/metrics/convergence.py" --repo "$repo"
-  } > "$out" || { err "не удалось посчитать метрики"; return 1; }
-  tail -n 6 "$out"
-  ok "записано в docs/metrics.md"
+  printf '%sEnvironment%s\n' "$B" "$N"
+  for t in git bash; do command -v "$t" >/dev/null && ok "$t" || err "$t not found"; done
+  [ -n "$PY" ] && ok "python: $("$PY" --version 2>&1)" || err "python 3 not found"
+  command -v jq >/dev/null && ok "jq" || warn "jq not found: the hooks allow all actions until you install it"
+  printf '%sInstall%s (%s)\n' "$B" "$N" "$H"
+  [ -f "$H/harness/hooks/guard.sh" ] && ok "guard.sh $(cat "$H/harness/VERSION" 2>/dev/null)" || warn "not installed: ./harness.sh install"
+  "$PY" "$KIT/lib/claude_settings.py" show "$H/settings.json" 2>/dev/null | sed 's/^/    /'
+  [ -s "$H/harness/installed-skills.txt" ] && ok "skills: $(tr '\n' ' ' < "$H/harness/installed-skills.txt")"
+  local n; n=$(cat "$H"/harness/errors/*.jsonl 2>/dev/null | wc -l | tr -d ' ')
+  ok "error store: $n events in $H/harness/errors"
 }
 
 cmd_incident() {
   local repo; repo="$(need_repo "${1:-}")" || return 1
-  local title="${2:-}"
-  [ -n "$title" ] || read -r -p "Что случилось (одной строкой): " title
+  local title="${2:-}"; [ -n "$title" ] || read -r -p "What happened (one line): " title
   local log="$repo/error.md" day n id
   [ -f "$log" ] || cp "$KIT/templates/error.md" "$log"
-  day="$(date +%F)"
-  n=$(grep -c "^## INC-$day-" "$log" || true)
-  id="INC-$day-$(printf '%02d' $((n + 1)))"
-  cat >> "$log" <<EOF
-
-## $id: $title
-- Date: $day
-- Agent:
-- Where:
-- Symptom:
-- Cause:
-- Class:
-- Barrier:
-- Level: text | hook | server | OS
-- Repro:
-- ADR: -
-- Status: open
-EOF
-  ok "$id добавлен в error.md — заполните барьер и репро-тест в течение 24 часов"
+  day="$(date +%F)"; n=$(grep -c "^## INC-$day-" "$log" || true); id="INC-$day-$(printf '%02d' $((n + 1)))"
+  printf '\n## %s: %s\n- Date: %s\n- Agent:\n- Found by: barrier | gate | ci | review | human | prod\n- Where:\n- Symptom:\n- Cause:\n- Class:\n- Barrier:\n- Level: text | hook | server | OS\n- Repro:\n- ADR: -\n- Status: open\n- Closed:\n' \
+    "$id" "$title" "$day" >> "$log"
+  (cd "$repo" && "$PY" "$KIT/gates/collect.py" --source manual --outcome incident --name "$id" --detail "$title") >/dev/null 2>&1 || true
+  ok "$id added to error.md. Fill in Barrier and Repro in 24 hours"
 }
 
 cmd_adr() {
   local repo; repo="$(need_repo "${1:-}")" || return 1
-  local title="${2:-}"
-  [ -n "$title" ] || read -r -p "Решение одной фразой: " title
-  local dir="$repo/docs/adr" last next file
+  local title="${2:-}"; [ -n "$title" ] || read -r -p "Decision in one sentence: " title
+  local dir="$repo/docs/adr" last next s file
   mkdir -p "$dir"
   last=$(ls "$dir" | grep -Eo '^(ADR-)?[0-9]{4}' | sed 's/^ADR-//' | grep -v '^0000$' | sort -n | tail -1)
-  next=$(printf '%04d' $((10#${last:-0} + 1)))
-  file="$dir/$next-$(slug "$title").md"
-  [ "$(slug "$title")" ] || file="$dir/$next.md"
-  sed -e "s/ADR-NNNN: <decision in one sentence>/ADR-$next: $title/" -e "s/YYYY-MM-DD/$(date +%F)/" -e "s/PROPOSED | APPROVED | LOCKED | SUPERSEDED by ADR-XXXX/PROPOSED/" \
-    "$KIT/templates/adr/ADR-0000.md" > "$file"
+  next=$(printf '%04d' $((10#${last:-0} + 1))); s=$(slug "$title")
+  file="$dir/$next${s:+-$s}.md"
+  sed -e "s/ADR-NNNN: <decision in one sentence>/ADR-$next: $title/" -e "s/YYYY-MM-DD/$(date +%F)/" \
+      -e "s/PROPOSED | APPROVED | LOCKED | SUPERSEDED by ADR-XXXX/PROPOSED/" "$KIT/templates/adr/ADR-0000.md" > "$file"
   [ -f "$dir/index.md" ] || cp "$KIT/templates/adr/index.md" "$dir/index.md"
   printf '| %s | %s | PROPOSED | `<paths>` |\n' "$next" "$title" >> "$dir/index.md"
-  ok "создан $(basename "$file") и строка в docs/adr/index.md — заполните Applies To и Reconsider When"
+  ok "created $(basename "$file"). Fill in Applies To and Reconsider When"
 }
 
-cmd_loadtest() {
-  local url="${1:-}" rps="${2:-100}"
-  [ -n "$url" ] || read -r -p "Адрес стенда (не прод!), например http://localhost:8080: " url
-  command -v docker >/dev/null || { err "нужен docker"; return 1; }
-  head_ "k6: ступени до $rps RPS на $url"
-  local host_url="${url/localhost/host.docker.internal}"
-  host_url="${host_url/127.0.0.1/host.docker.internal}"
-  MSYS_NO_PATHCONV=1 docker run --rm -e BASE_URL="$host_url" -e PROFILE=ramp -e TARGET_RPS="$rps" \
-    -v "$KIT/loadtest:/scripts:ro" grafana/k6:0.54.0 run /scripts/k6-template.js
-}
-
-cmd_start() {
-  local repo; repo="$(need_repo "${1:-}")" || return 1; shift
-  say "${B}self-harness: шаг 1 процесса — базовая линия для $repo${N}"
-  cmd_doctor || warn "есть недостающие инструменты, продолжаю"
-  cmd_install "$repo" "$@" || return 1
-  if [ -n "$(git -C "$repo" status --porcelain)" ]; then
-    warn "харнес скопирован, но не закоммичен: проверьте файлы и сделайте коммит"
-  fi
-  cmd_check "$repo" || warn "гейты нашли нарушения — это нормально для первого запуска, разберите их"
-  cmd_metrics "$repo" || true
-  head_ "Дальше"
-  say "  1. Заполните AGENTS.md: команды, карта кода, правила (до 150 строк)."
-  say "  2. Глобальный слой: cp $KIT/templates/AGENTS.global.md ~/.claude/CLAUDE.md"
-  say "  3. Защитите main на сервере (push: никто), работайте в dev."
-  say "  4. Добавьте 'bash gates/run-all.sh' в CI — пример в $KIT/ci/."
-  say "  5. Ошибка агента: ./harness.sh incident $repo \"что случилось\""
-  say "  6. Раз в неделю: ./harness.sh metrics $repo и ./harness.sh errors $repo"
-  say "  7. Цена харнеса для агента: ./harness.sh budget $repo"
-  say "  Подробно: $KIT/PROCESS.md"
+run() { # run <command> <args...>
+  local r
+  case "$1" in
+    install)   shift; bash "$KIT/install.sh" "$@" ;;
+    uninstall) shift; bash "$KIT/install.sh" --uninstall "$@" ;;
+    project)   r="$(need_repo "${2:-}")" || return 1; shift 2; bash "$KIT/install.sh" --project "$r" "$@" ;;
+    demo)      if [ -n "${2:-}" ]; then bash "$KIT/try-it.sh" --only "$2"; else bash "$KIT/try-it.sh"; fi ;;
+    errors)    shift; "$PY" "$KIT/metrics/errors.py" --repo "$PWD" "$@" ;;
+    budget)    shift; "$PY" "$KIT/metrics/budget.py" "$@" ;;
+    dashboard) shift; "$PY" "$KIT/metrics/dashboard.py" --repo "$PWD" "$@" ;;
+    bench)     shift; "$PY" "$KIT/bench/run.py" "$@" ;;
+    h2)        shift; "$PY" "$KIT/h2/h2.py" "$@" ;;
+    evolve)    r="$(need_repo "${2:-$PWD}")" || return 1; shift; [ $# -gt 0 ] && shift; "$PY" "$KIT/metrics/dashboard.py" --evolve "$r" "$@" ;;
+    doctor)    cmd_doctor ;;
+    check)     r="$(need_repo "${2:-}")" || return 1; (cd "$r" && bash gates/run-all.sh) ;;
+    lock)      r="$(need_repo "${2:-}")" || return 1; (cd "$r" && "$PY" gates/checks.py lock) && ok "commit harness.lock with the change" ;;
+    metrics)   r="$(need_repo "${2:-}")" || return 1; "$PY" "$KIT/metrics/convergence.py" --repo "$r" ;;
+    incident)  shift; cmd_incident "$@" ;;
+    adr)       shift; cmd_adr "$@" ;;
+    help|-h|--help) help_ ;;
+    *) err "unknown command: $1"; help_; return 2 ;;
+  esac
 }
 
 menu() {
-  local repo="${HARNESS_REPO:-}"
   while true; do
-    printf '\n%sself-harness%s — процесс, в котором агенты держат границы дрейфа\n' "$B" "$N"
-    printf 'Репозиторий: %s\n\n' "${repo:-не выбран}"
+    printf '\n%sself-harness%s\n' "$B" "$N"
     cat <<'M'
-  1) Старт: базовая линия в репозитории (одна кнопка)
-  2) Демо: 27 атак на барьеры на временном репозитории
-  3) Проверить окружение
-  4) Проверить гейты
-  5) Метрики сходимости
-  6) Записать ошибку агента (error.md)
-  7) Новый ADR
-  8) Нагрузочный тест (k6)
-  l) Принять изменение харнеса (harness.lock)
-  b) Список 27 барьеров
-  e) Статистика ошибок
-  t) Цена харнеса (токены, задержка хуков)
-  9) Выбрать репозиторий
-  0) Выход
+  1) Install for all projects (global)
+  2) Demo: 36 attacks, 17 normal actions
+  3) Error statistics
+  4) Cost for the agent (budget)
+  8) Learning dashboard (HTML)
+  5) Check the install (doctor)
+  6) Add git hooks and CI gates to a project
+  7) Uninstall
+  0) Exit
 M
     read -r -p "> " c || return 0
     case "$c" in
-      1|4|5|6|7|l|e|t) [ -n "$repo" ] || { read -r -p "Путь к репозиторию: " repo; } ;;
-    esac
-    case "$c" in
-      1) cmd_start "$repo" ;;
-      2) cmd_demo ;;
-      3) cmd_doctor ;;
-      4) cmd_check "$repo" ;;
-      5) cmd_metrics "$repo" ;;
-      6) cmd_incident "$repo" ;;
-      7) cmd_adr "$repo" ;;
-      8) cmd_loadtest ;;
-      l) cmd_lock "$repo" ;;
-      b) cmd_barriers ;;
-      e) cmd_errors "$repo" ;;
-      t) cmd_budget "$repo" ;;
-      9) read -r -p "Путь к репозиторию: " repo ;;
+      1) run install ;;
+      2) run demo ;;
+      3) run errors ;;
+      4) run budget ;;
+      8) run dashboard ;;
+      5) run doctor ;;
+      6) read -r -p "Path to the repository: " r; run project "$r" ;;
+      7) run uninstall ;;
       0|q|Q) return 0 ;;
-      *) warn "нет такого пункта" ;;
+      *) warn "no such item" ;;
     esac
   done
 }
 
-case "${1:-menu}" in
-  menu) menu ;;
-  start|doctor|demo|barriers|install|check|metrics|incident|adr|loadtest|lock|errors|budget) c="$1"; shift; "cmd_$c" "$@" ;;
-  -h|--help|help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0" ;;
-  *) err "неизвестная команда: $1"; awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 2 ;;
-esac
+if [ $# -eq 0 ]; then menu; else run "$@"; fi

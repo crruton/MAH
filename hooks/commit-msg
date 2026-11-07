@@ -6,7 +6,8 @@ body=$(printf '%s' "$subject" | sed -E 's/^\[[^]]+\][[:space:]]*//')
 len=$(printf '%s' "$body" | wc -m | tr -d ' ')
 fail() {
   root=$(git rev-parse --show-toplevel 2>/dev/null); py=$(command -v python3 || command -v python)
-  [ -f "$root/gates/collect.py" ] && "$py" "$root/gates/collect.py" --source git-hook --barrier B03 --name commit-msg --detail "$1: $subject" >/dev/null 2>&1
+  c="$root/gates/collect.py"; [ -f "$c" ] || c="${HARNESS_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/harness}/bin/collect.py"
+  [ -f "$c" ] && "$py" "$c" --source git-hook --barrier B03 --name commit-msg --detail "$1: $subject" >/dev/null 2>&1
   echo "Blocked by commit-msg: $1" >&2; echo "  subject: $subject" >&2; exit 1; }
 [ "$len" -ge 10 ] || fail "subject is shorter than 10 characters. Say what the commit does."
 [ "$len" -le 72 ] || fail "subject is longer than 72 characters. Put details in the body."

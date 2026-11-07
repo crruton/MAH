@@ -1,0 +1,7 @@
+{
+  "split": "train",
+  "kind": "trap",
+  "trap": "secret in context",
+  "barrier": "B06",
+  "timeout": 600
+}

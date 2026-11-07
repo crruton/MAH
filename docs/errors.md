@@ -2,22 +2,22 @@
 
 Обновлено: 2026-11-06. Команда: `./harness.sh errors .`
 
-| Событий | Заблокировано барьерами | Доля агента | Ошибок инструментов | Инцидентов | Открытых | Enforcement Ratio |
-|---|---|---|---|---|---|---|
-| 5 | 5 | 100% | 0 | 11 | 0 | 82% |
+| Событий | Проектов | Заблокировано | Вопросов человеку | Доля агента | Ошибок инструментов | Инцидентов | Открытых | Enforcement Ratio |
+|---|---|---|---|---|---|---|---|---|
+| 5 | 1 | 5 | 0 | 100% | 0 | 14 | 0 | 86% |
 
 Enforcement Ratio — доля закрытых инцидентов, у которых барьер на уровне хука, сервера или ОС, а не текста.
 
 ## Барьеры
 
-Каждое срабатывание — ошибка, которая не дошла до кода.
+Блок — ошибка, которая не дошла до кода. Вопрос — цена для человека: барьер, который часто спрашивает, а человек всегда разрешает, — ложное срабатывание, его надо ослабить.
 
-| Барьер | Что | Срабатываний | | Последнее |
-|---|---|---|---|---|
-| B21 | regex across lines | 2 | ████████████████████ | 2026-11-05 |
-| B24 | dependency without major bound | 1 | ██████████ | 2026-11-05 |
-| B26 | CRLF in shell script | 1 | ██████████ | 2026-11-05 |
-| B27 | script without exec bit | 1 | ██████████ | 2026-11-05 |
+| Барьер | Что | Блоков | Вопросов | | Последнее |
+|---|---|---|---|---|---|
+| B21 | regex across lines | 2 | 0 | ████████████████████ | 2026-11-05 |
+| B26 | CRLF in shell script | 1 | 0 | ██████████ | 2026-11-05 |
+| B24 | dependency without major bound | 1 | 0 | ██████████ | 2026-11-05 |
+| B27 | script without exec bit | 1 | 0 | ██████████ | 2026-11-05 |
 
 ## По неделям
 
@@ -35,12 +35,12 @@ Enforcement Ratio — доля закрытых инцидентов, у кот�
 
 | Уровень барьера | Инцидентов |
 |---|---|
-| hook | 9 |
+| hook | 12 |
 | text | 2 |
 
 | Класс | Инцидентов |
 |---|---|
-| portability | 7 |
+| portability | 8 |
 | repeat | 2 |
 | encoding | 2 |
 | race | 1 |
@@ -48,6 +48,9 @@ Enforcement Ratio — доля закрытых инцидентов, у кот�
 | noise in statistics | 1 |
 | performance | 1 |
 | tooling | 1 |
+| false positive | 1 |
+| cost | 1 |
+| false confidence | 1 |
 
 | ID | Что | Статус | Уровень | Барьеры |
 |---|---|---|---|---|
@@ -62,3 +65,6 @@ Enforcement Ratio — доля закрытых инцидентов, у кот�
 | INC-2026-11-06-01 | hooks added 2.5 seconds to each tool call | closed | hook |  |
 | INC-2026-11-06-02 | write_text wrote CRLF on Windows | closed | hook | B25 |
 | INC-2026-11-06-03 | backslashes in heredoc and sed broke patch scripts four time | closed | text |  |
+| INC-2026-11-06-04 | the pack was tied to projects and cost more than it gave | closed | hook |  |
+| INC-2026-11-06-05 | Git Bash rewrote a "/path" argument for Windows Python | closed | hook |  |
+| INC-2026-11-06-06 | the demo counted "file not found" as a working barrier | closed | hook |  |

@@ -52,6 +52,13 @@ def check_python(path: str, src: str, problems: list):
     except SyntaxError:
         return
     jsonrpc = "jsonrpc" in src
+    # names bound to a string constant: bash = "bash"; subprocess.run([bash, ...]) is the same error (INC-2026-11-06-12)
+    names = {t.id: n.value.value for n in ast.walk(tree) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant)
+             and isinstance(n.value.value, str) for t in n.targets if isinstance(t, ast.Name)}
+
+    def head_of(node):
+        return names.get(node.id) if isinstance(node, ast.Name) else const_str(node)
+
     for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
         f = call.func
         name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
@@ -67,7 +74,7 @@ def check_python(path: str, src: str, problems: list):
         # B22
         if owner == "subprocess" and name in SUBPROC and call.args:
             first = call.args[0]
-            head = const_str(first.elts[0]) if isinstance(first, (ast.List, ast.Tuple)) and first.elts else const_str(first)
+            head = head_of(first.elts[0]) if isinstance(first, (ast.List, ast.Tuple)) and first.elts else head_of(first)
             if head and head.split()[0] in ("bash", "sh"):
                 problems.append(("B22", f"{loc}: bare \"{head.split()[0]}\" starts WSL on Windows. Use shutil.which(\"bash\")."))
         # B23

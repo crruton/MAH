@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Harness gates B08-B15, B19, B20. Usage: checks.py <gate> [args].
+"""Harness gates B08-B15, B19, B20, B34-B37. Usage: checks.py <gate> [args].
 
 Gates:
   forbidden-files   B08  secret files are tracked (.env, keys, certificates)
-  large-files       B09  a changed file is larger than HARNESS_MAX_FILE_KB (default 1024)
+  large-files       B09  a changed file is larger than HARNESS_MAX_FILE_KB (default 1024). Optional
   conflict-markers  B10  merge conflict markers in changed files
   test-weakening    B11  a test was skipped or lost assertions
-  changelog         B12  code changed but CHANGELOG.md did not
   adr-fields        B14  an ADR has no Status, Applies To or Reconsider When
   adr-links         B15  an ADR refers to an ADR that does not exist
-  zones             B19  Red Zone deny rules or agent hooks are missing
+  zones             B19  a project setting opens a Red Zone action or turns off the hooks
   integrity         B20  harness files differ from harness.lock
+  test-deletion     B34  a test file or a test function was deleted
+  suppressions      B35  a new linter or type check suppression without a reason
+  leftovers         B36  cut code ("// ... rest of the code"), stubs, debugger calls
+  lockfile-sync     B37  a manifest changed its dependencies, the lock file did not
   lock                   write harness.lock (run after a reviewed harness change)
+
+Any line with "harness-allow" is not checked by B35 and B36.
 """
 import fnmatch
 import hashlib
@@ -22,6 +27,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+import _lib  # noqa: E402
 from _lib import added_and_removed, changed_files, git, read_text, report  # noqa: E402
 
 ADR_DIR = os.environ.get("HARNESS_ADR_DIR", "docs/adr")
@@ -77,9 +83,11 @@ def conflict_markers() -> int:
 
 
 # ---------- B11
-TEST_FILE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|(^|/)test_[^/]+\.py|_test\.py|Test\.java|Tests?\.cs)$")
-SKIP = re.compile(r"\bt\.Skip\(|@pytest\.mark\.skip|pytest\.skip\(|\b(it|test|describe)\.(skip|only)\(|\bx(it|describe)\(|@Disabled\b|@Ignore\b|\[Ignore\]|unittest\.skip")
-ASSERT = re.compile(r"\bassert|\bexpect\(|\brequire\.|\bt\.(Error|Fatal)|\bShould\(|Assert\.")
+TEST_FILE = _lib.TEST_FILE
+SKIP = re.compile(r"\bt\.Skip(Now)?\(|@pytest\.mark\.(skip|xfail)|pytest\.skip\(|\b(it|test|describe|context)\.(skip|only|todo)\(|"
+                  r"\b[xf](it|describe|context|test)\(|@Disabled\b|@Ignore\b|\[Ignore\]|Skip\s*=\s*\"|unittest\.skip|#\[ignore\]|"
+                  r"^\s*(skip|pending)\b|markTestSkipped|XCTSkip|@tag\s+:skip|\bskip:\s*true")
+ASSERT = re.compile(r"\bassert|\bexpect\(|\bexpect\b.*\bto\b|\brequire\.|\bt\.(Error|Fatal)|\bShould\(|\bshould\b|Assert\.|XCTAssert|\brefute\b")
 
 
 def test_weakening() -> int:
@@ -96,16 +104,110 @@ def test_weakening() -> int:
     return report("check-test-weakening", problems)
 
 
-# ---------- B12
-DOC = re.compile(r"(\.md|\.txt|\.png|\.jpg|\.svg)$|^(docs|\.github|\.claude)/|^(LICENSE|CHANGELOG\.md)$")
+# ---------- B34
+TEST_DEF = re.compile(r"^\s*(func\s+Test\w*\(|(async\s+)?def\s+test_\w*\(|(it|test|specify)\s*\(\s*['\"`]|@Test\b|\[(Fact|Test|TestMethod|Theory)\]|"
+                      r"#\[test\]|test\s+['\"]|func\s+test\w*\(\)|public function test\w*\()")
 
 
-def changelog() -> int:
-    files = changed_files()
-    code = [f for f in files if not DOC.search(f)]
-    if code and "CHANGELOG.md" not in files:
-        return report("check-changelog", [f"{len(code)} code file(s) changed, CHANGELOG.md did not. Add an entry under [Unreleased]."])
-    return report("check-changelog", [])
+def test_deletion() -> int:
+    problems = []
+    for f in _lib.deleted_files():
+        if TEST_FILE.search(f):
+            problems.append(f"{f}: test file deleted. A human must approve this change.")
+    for f in changed_files():
+        if not TEST_FILE.search(f):
+            continue
+        added, removed = added_and_removed(f)
+        lost = sum(1 for line in removed if TEST_DEF.search(line)) - sum(1 for line in added if TEST_DEF.search(line))
+        if lost > 0:
+            problems.append(f"{f}: {lost} test(s) removed. Fix the code, not the tests, or ask a human to approve.")
+    return report("check-test-deletion", problems)
+
+
+# ---------- B35
+SUPPRESS = re.compile(r"eslint-disable|@ts-ignore|@ts-nocheck|@ts-expect-error|#\s*type:\s*ignore|#\s*noqa|pylint:\s*disable|//\s*nolint|"
+                      r"@SuppressWarnings|#\[allow\(|rubocop:disable|#pragma warning disable|NOSONAR|istanbul ignore|c8 ignore|"
+                      r"pragma:\s*no cover|@phpstan-ignore|phpcs:ignore|swiftlint:disable|detekt|ktlint-disable|biome-ignore|deno-lint-ignore")
+REASON = re.compile(r"\s--\s+\S|reason:|because|harness-allow|\bsee\s+(https?:|#|[A-Z]+-\d+)|#\d+|[A-Z]{2,}-\d+")
+
+
+def suppressions() -> int:
+    problems = []
+    for f in changed_files():
+        if f.endswith((".md", ".txt", ".rst", ".json", ".yml", ".yaml")):  # text and data name a suppression, they do not use it
+            continue
+        added, _ = added_and_removed(f)
+        n = sum(1 for line in added if SUPPRESS.search(line) and not REASON.search(line))
+        if n:
+            problems.append(f"{f}: {n} new linter or type check suppression(s) without a reason. "
+                            "Fix the warning, or add the reason on the same line ('-- reason', 'reason:', a ticket ID).")
+    return report("check-suppressions", problems)
+
+
+# ---------- B36
+LEFTOVER = [
+    ("cut code", re.compile(r"(?i)(//|#|/\*|<!--|--)\s*(\.\.\.|…)?\s*(rest|remainder|remaining|existing|other|previous|same)\s+(of\s+(the\s+)?)?"
+                            r"(code|implementation|methods?|functions?|logic|file|content|tests?)\b.*(here|unchanged|as before|remains?|omitted|goes here|\.\.\.|…)")),
+    ("cut code", re.compile(r"(?i)^\s*(//|#)\s*\.\.\.\s*(code|implementation)\s*\.\.\.\s*$")),
+    ("stub", re.compile(r"\b(todo|unimplemented)!\(\)|throw\s+new\s+(Error|NotImplementedException|UnsupportedOperationException)\(\s*['\"]?(not\s+implemented|TODO)|"
+                        r"(?i:raise\s+NotImplementedError\(['\"](todo|implement))")),
+    ("debugger", re.compile(r"^\s*debugger;?\s*$|\bbreakpoint\(\)|\bpdb\.set_trace\(\)|^\s*import\s+i?pdb\b|\bbinding\.(pry|irb)\b|^\s*byebug\b|"
+                            r"\bdbg!\(|\bvar_dump\(|\bdd\(\$|\bconsole\.trace\(|runtime\.Breakpoint\(\)")),
+]
+NO_LEFTOVER_CHECK = (".md", ".txt", ".rst", ".snap", ".lock")
+
+
+def leftovers() -> int:
+    problems = []
+    for f in changed_files():
+        if f.endswith(NO_LEFTOVER_CHECK) or f.startswith("gates/"):
+            continue
+        added, _ = added_and_removed(f)
+        for line in added:
+            if "harness-allow" in line:
+                continue
+            hit = next((name for name, rx in LEFTOVER if rx.search(line)), "")
+            if hit:
+                problems.append(f"{f}: {hit} left in the code: `{line.strip()[:70]}`. "
+                                + ("Write the full code: a cut comment deletes the real code." if hit == "cut code" else "Remove it before the merge."))
+                break
+    return report("check-leftovers", problems)
+
+
+# ---------- B37
+# manifest -> lock files; dependency lines -> regex that a dependency change matches
+MANIFESTS = {
+    "package.json": (("package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb", "npm-shrinkwrap.json"),
+                     re.compile(r"^\s*\"(?!version\"|name\"|description\"|main\"|types\"|module\"|node\"|npm\"|pnpm\"|yarn\")[@\w./-]+\"\s*:\s*\"(\^|~|[<>=]|\*|\d|workspace:|npm:|file:|link:|git|https?:|latest)")),
+    "composer.json": (("composer.lock",), re.compile(r"^\s*\"[\w.-]+/[\w.-]+\"\s*:\s*\"")),
+    "pyproject.toml": (("poetry.lock", "uv.lock", "pdm.lock"),
+                       re.compile(r"^\s*\"[A-Za-z0-9_.\[\]-]+\s*([<>=!~]=?|@|;|\")|^\s*(?!name|version|description|readme|requires-python|license|python)[A-Za-z0-9_.-]+\s*=\s*(\"[\^~<>=*\d]|\{)")),
+    "Pipfile": (("Pipfile.lock",), re.compile(r"^\s*[A-Za-z0-9_.-]+\s*=\s*(\"|\{)")),
+    "Cargo.toml": (("Cargo.lock",), re.compile(r"^\s*(?!name|version|edition|description|license|authors|readme|rust-version)[A-Za-z0-9_-]+\s*=\s*(\"[\^~<>=*\d]|\{)")),
+    "go.mod": (("go.sum",), re.compile(r"^\s*(require\s+)?[\w.-]+\.[\w.-]+/\S*\s+v\d")),
+    "Gemfile": (("Gemfile.lock",), re.compile(r"^\s*gem\s+['\"]")),
+    "mix.exs": (("mix.lock",), re.compile(r"\{:\w+,\s*\"")),
+    "pubspec.yaml": (("pubspec.lock",), re.compile(r"^\s+[a-z0-9_]+:\s*[\^><=\d]")),
+}
+
+
+def lockfile_sync() -> int:
+    changed = set(changed_files())
+    tracked = set(git("ls-files").splitlines())
+    problems = []
+    for f in sorted(changed):
+        d, _, name = f.rpartition("/")
+        if name not in MANIFESTS:
+            continue
+        locks, dep = MANIFESTS[name]
+        here = [f"{d}/{x}" if d else x for x in locks]
+        have = [x for x in here if x in tracked]
+        if not have or any(x in changed for x in have):
+            continue  # the project does not commit a lock file, or the lock changed too
+        added, removed = added_and_removed(f)
+        if any(dep.search(line) for line in added + removed):
+            problems.append(f"{f}: dependencies changed, {have[0]} did not. Run the package manager and commit the lock file.")
+    return report("check-lockfile-sync", problems)
 
 
 # ---------- B14, B15
@@ -148,31 +250,30 @@ def adr_links() -> int:
 
 
 # ---------- B19
-REQUIRED_DENY = ["Read(./.env)", "git reset --hard", "rm -rf", "git push --force"]
-REQUIRED_HOOKS = ["guard.sh"]
+# A project setting must not open what the global guard closes.
+RISKY_ALLOW = ["git reset", "git clean", "git push --force", "git push -f", "rm -rf", ".env", "secrets/", "*.pem", "*.key"]
 
 
 def zones() -> int:
     problems = []
-    p = Path(".claude/settings.json")
-    if p.exists():
+    for p in (Path(".claude/settings.json"), Path(".claude/settings.local.json")):
+        if not p.exists() or (p.name.endswith("local.json") and not git("ls-files", str(p)).strip()):
+            continue
         cfg = json.loads(p.read_text(encoding="utf-8"))
-        deny = " ".join(cfg.get("permissions", {}).get("deny", []))
-        for d in REQUIRED_DENY:
-            if d not in deny:
-                problems.append(f".claude/settings.json: Red Zone deny for '{d}' is missing.")
-        hooks = json.dumps(cfg.get("hooks", {}))
-        for h in REQUIRED_HOOKS:
-            if h not in hooks:
-                problems.append(f".claude/settings.json: hook {h} is not registered.")
+        for rule in cfg.get("permissions", {}).get("allow", []):
+            if any(r in rule for r in RISKY_ALLOW):
+                problems.append(f"{p}: allow rule \"{rule}\" opens a Red Zone action. Remove it.")
+        if cfg.get("disableAllHooks"):
+            problems.append(f"{p}: disableAllHooks turns off the guard. Remove it.")
+        if cfg.get("permissions", {}).get("defaultMode") == "bypassPermissions":
+            problems.append(f"{p}: defaultMode bypassPermissions in a shared file. Remove it.")
     o = Path("opencode.json")
     if o.exists():
         bash = json.loads(o.read_text(encoding="utf-8")).get("permission", {}).get("bash", {})
-        for d in ("git reset*", "rm -rf*", "git push --force*"):
-            if bash.get(d) != "deny":
-                problems.append(f"opencode.json: '{d}' must be 'deny'.")
-    if not p.exists() and not o.exists():
-        problems.append("no agent settings: run ./harness.sh install.")
+        if isinstance(bash, dict):
+            for pattern, value in bash.items():
+                if value == "allow" and any(r in pattern for r in ("git reset", "rm -rf", "git push --force")):
+                    problems.append(f"opencode.json: bash \"{pattern}\" is allow. Use deny or ask.")
     return report("check-zones", problems)
 
 
@@ -205,7 +306,7 @@ def lock() -> int:
 
 def integrity() -> int:
     if not LOCK.exists():
-        return report("check-harness-integrity", ["harness.lock is missing. Run ./harness.sh lock after review."])
+        return report("check-harness-integrity", [], "no harness.lock, skipped (install --project --lock to use it)")
     want = json.loads(LOCK.read_text(encoding="utf-8"))
     have = {str(p).replace("\\", "/"): digest(p) for p in guarded_files()}
     problems = [f"{f}: changed without review (harness.lock differs)." for f in sorted(set(want) | set(have))
@@ -215,8 +316,9 @@ def integrity() -> int:
 
 GATES = {
     "forbidden-files": forbidden_files, "large-files": large_files, "conflict-markers": conflict_markers,
-    "test-weakening": test_weakening, "changelog": changelog, "adr-fields": adr_fields, "adr-links": adr_links,
+    "test-weakening": test_weakening, "adr-fields": adr_fields, "adr-links": adr_links,
     "zones": zones, "integrity": integrity, "lock": lock,
+    "test-deletion": test_deletion, "suppressions": suppressions, "leftovers": leftovers, "lockfile-sync": lockfile_sync,
 }
 
 if __name__ == "__main__":

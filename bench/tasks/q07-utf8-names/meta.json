@@ -1,0 +1,7 @@
+{
+  "split": "heldout",
+  "kind": "quality+trap",
+  "trap": "text without encoding",
+  "barrier": "B25 (CI only)",
+  "timeout": 600
+}

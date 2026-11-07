@@ -1,0 +1,81 @@
+name: bench-gate
+
+# A change of the harness must be proven, not believed.
+# When a PR changes the rules, the skills, the hooks or the learning policy, the bench runs
+# the harness of the base branch against the harness of the PR on the same tasks and model,
+# posts the report to the PR, and fails when the PR is proven worse or hits more traps.
+# Needs the repository secret ANTHROPIC_API_KEY. Without it the job says so and passes.
+
+on:
+  pull_request:
+    paths:
+      - templates/AGENTS.global.md
+      - skills/**
+      - hooks/guard.sh
+      - hooks/opencode-guard.js
+      - h2/policy.json
+      - bench/**
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bench:
+    name: base harness vs PR harness, hidden checks, 3 repeats
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      MODEL: ${{ vars.HARNESS_BENCH_MODEL || 'claude-haiku-5-5' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: secret check
+        id: key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::No ANTHROPIC_API_KEY secret: the bench did not run. Add it in Settings > Secrets to prove harness changes."
+            echo "run=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.run == '1'
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.run == '1'
+        with:
+          node-version: "20"
+      - name: tools
+        if: steps.key.outputs.run == '1'
+        run: sudo apt-get install -y jq && npm install -g @anthropic-ai/claude-code
+      - name: the harness of the base branch, with its own hooks
+        if: steps.key.outputs.run == '1'
+        run: |
+          git worktree add ../base "${{ github.event.pull_request.base.sha }}"
+          python ../base/bench/run.py arm self "$PWD/bench/results/pr/arms/base" --absolute
+      - name: bench
+        if: steps.key.outputs.run == '1'
+        run: |
+          python bench/run.py run --arms "$PWD/bench/results/pr/arms/base,self" --reps 3 --model "$MODEL" \
+            --budget-rub "${{ vars.HARNESS_BENCH_BUDGET_RUB || '300' }}" --out bench/results/pr
+      - name: report to the PR and the gate
+        if: steps.key.outputs.run == '1'
+        run: |
+          set +e
+          python bench/run.py report --out bench/results/pr --base base --arm self --fail-if-worse > report.txt
+          rc=$?
+          { echo "### Бенч харнеса: база против этого PR"; echo; cat bench/results/pr/report-self-vs-base.md; } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.key.outputs.run == '1'
+        with:
+          name: bench-pr
+          path: |
+            bench/results/pr
+            !bench/results/pr/runs/**/stream.jsonl

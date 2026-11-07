@@ -100,9 +100,9 @@ The agent that wrote this kit made these errors. Each one became a barrier or a 
 - Symptom: B02 showed 26 events after one demo run
 - Cause: the reset of the demo repository used git push --force through the pre-push hook
 - Class: noise in statistics
-- Barrier: the demo reset uses --no-verify. The error statistics show repeats, so a human sees the noise
-- Level: text
-- Repro: run try-it.sh. B02 must show 1 event
+- Barrier: the demo runs with a throwaway CLAUDE_CONFIG_DIR and HARNESS_HOME; CI checks that the real error store has no events after the demo
+- Level: server
+- Repro: CI job demo: the step 'the demo does not write to the real error store'
 - ADR: -
 - Status: closed
 
@@ -139,8 +139,186 @@ The agent that wrote this kit made these errors. Each one became a barrier or a 
 - Symptom: sed changed nothing, or "\n" became a real line break and broke the Python syntax
 - Cause: the agent put escaped text through two shells (bash heredoc, then sed or python)
 - Class: tooling, repeat
-- Barrier: write patch scripts to a file. Use the Edit tool for lines with backslashes. Do not use sed for code
-- Level: text
-- Repro: no machine check. The error statistics show it as a repeat class
+- Barrier: B38 guard-syntax for heredocs (from INC-2026-11-06-08) and for sed -i with escapes in code files (from INC-2026-11-06-13)
+- Level: hook
+- Repro: tests/test_loop.py test_shell_patching_of_code_is_denied
 - ADR: -
 - Status: closed
+
+## INC-2026-11-06-04: the pack was tied to projects and cost more than it gave
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: install.sh, hooks/guard.sh
+- Symptom: the user pointed out four harms: 10 MCP servers in each session, SIP skills as noise, guard-destructive blocked docker compose down -v and rm -rf build, check-changelog on each small change
+- Cause: the agent added modules because they existed, not because statistics showed a need. The demo checked only attacks, not normal work
+- Class: false positive, cost
+- Barrier: global install with a minimal core (MCP and domain skills moved to extras), guard.sh with deny/ask/allow levels, 8 normal actions in the demo that must pass
+- Level: hook
+- Repro: try-it.sh shows "false positives: 0"; ./harness.sh budget shows about 160 tokens and 110 ms
+- ADR: -
+- Status: closed
+
+## INC-2026-11-06-05: Git Bash rewrote a "/path" argument for Windows Python
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: install.sh (uninstall of the CLAUDE.md import)
+- Symptom: uninstall left the import line in CLAUDE.md
+- Cause: MSYS path conversion changed the argument "/harness/AGENTS.md" to "C:/Program Files/Git/harness/AGENTS.md"
+- Class: portability
+- Barrier: no leading slash in arguments to Windows programs. The global-install CI job checks that uninstall removes the line
+- Level: hook
+- Repro: CI job global-install
+- ADR: -
+- Status: closed
+
+## INC-2026-11-06-06: the demo counted "file not found" as a working barrier
+- Date: 2026-11-06
+- Agent: claude-code
+- Where: try-it.sh
+- Symptom: with a broken install, 24 of 27 attacks showed "blocked"
+- Cause: the demo took any non-zero exit code as a block
+- Class: false confidence
+- Barrier: an attack counts only when the output has "Blocked by" or "FAIL", or the hook asked. Other failures show "DEMO ERROR"
+- Level: hook
+- Repro: break gates/ in the demo repository. The demo must show DEMO ERROR, not blocked
+- ADR: -
+- Status: closed
+
+## INC-2026-11-06-07: three different node errors had one signature
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: dashboard
+- Where: metrics/dashboard.py, signature()
+- Symptom: 4 failed calls in 2 sessions in 14 days (raft, technology-radar) under "node:internal<path>:#"
+- Signature: Bash: node:internal<path>:#
+- Cause: the signature took the first line. For node it is the stack header, so an invalid header, an ESM require and a package export error looked like one error. One of them hid a token leak (INC-2026-11-06-11)
+- Class: noise in statistics
+- Barrier: signature() skips stack headers and success lines and takes the first line that names an error
+- Level: hook
+- Repro: tests/test_loop.py test_signature_skips_node_stack_header
+- ADR: -
+- Status: closed
+- Closed: 2026-11-06
+
+## INC-2026-11-06-08: a long heredoc broke the shell quotes, again
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: dashboard
+- Where: patch scripts in technology-radar and arcspace sessions
+- Symptom: 3 failed calls in 2 sessions in 14 days: "unexpected EOF while looking for matching `''"
+- Signature: Bash: <path>: -c: line #: unexpected EOF while looking for matching `''
+- Cause: a quote inside a heredoc script ended the shell string early. INC-2026-11-06-03 had the same class, but it was closed with a text rule only
+- Class: tooling, repeat
+- Barrier: B38 guard-syntax: bash -n checks each heredoc or long multi-line command before it runs
+- Level: hook
+- Repro: tests/test_loop.py test_shell_patching_of_code_is_denied; demo attack B38
+- ADR: -
+- Status: closed
+- Closed: 2026-11-06
+
+## INC-2026-11-06-09: the agent read files that do not exist
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: dashboard
+- Where: screenshots that a script did not make, a memory file before it was created
+- Symptom: 3 failed calls in 2 sessions in 14 days: "File does not exist"
+- Signature: Read: File does not exist. Note: your current working directory is <path>
+- Cause: a check of a file that can be absent. The agent gets the answer from one call and continues. This is not an agent error, and a barrier would cost more than the call
+- Class: expected failure
+- Barrier: -
+- Level: -
+- Repro: -
+- ADR: -
+- Status: accepted
+- Closed: 2026-11-06
+
+## INC-2026-11-06-10: the signature took a success line
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: dashboard
+- Where: metrics/dashboard.py, signature()
+- Symptom: 3 failed calls under "✓ check-syntax: # файлов"
+- Signature: PowerShell: ✓ check-syntax: # файлов, # inline-скриптов в # страницах
+- Cause: the script printed a success line first and the error later. The same cause as INC-2026-11-06-07
+- Class: noise in statistics
+- Barrier: the signature() fix of INC-2026-11-06-07
+- Level: hook
+- Repro: tests/test_loop.py test_signature_skips_success_line
+- ADR: -
+- Status: closed
+- Closed: 2026-11-06
+
+## INC-2026-11-06-11: a GitLab token reached the session transcript through an error message
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: dashboard
+- Where: technology-radar, gl-create-mr.cjs, session of 2026-10-24
+- Symptom: node printed "Headers.append: <file content> is an invalid header value". The file content had the token
+- Cause: the script sent the whole token file (KEY=value lines) as an HTTP header. The error message of the runtime printed it. The collector mask and the gate check-secrets knew only the old 20-character GitLab format
+- Class: secret leak
+- Barrier: collector mask and B07 know the new GitLab formats (glpat, gldt, glrt, glptt, glcbt, glsoat with dots); a human rotates the token
+- Level: hook
+- Repro: tests/test_loop.py test_new_gitlab_token_is_masked, test_new_gitlab_token_fails_the_gate
+- ADR: -
+- Status: open
+- Closed:
+
+## INC-2026-11-06-12: B22 stopped the case, not the class
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: review
+- Where: tests/test_loop.py while closing INC-2026-11-06-08
+- Symptom: the agent wrote bash = "bash"; subprocess.run([bash, ...]) and Windows started WSL. The gate B22 did not see it
+- Cause: B22 checked only a string literal in the argument list, not a name bound to the same string
+- Class: portability, leak
+- Barrier: B22 resolves names bound to string constants in the module
+- Level: hook
+- Repro: tests/test_loop.py test_bare_bash_through_a_variable_fails_the_gate
+- ADR: -
+- Status: closed
+- Closed: 2026-11-06
+
+## INC-2026-11-06-13: sed changed "\n" into a real line break in Python code, again
+- Date: 2026-11-06
+- Agent: claude-code
+- Found by: review
+- Where: tests/test_loop.py while closing INC-2026-11-06-08
+- Symptom: newline="\n" became newline=" and a line break; no gate saw it, the agent saw it when it read the lines back
+- Cause: the same class as INC-2026-11-06-03: escapes through two shells. B38 covered only heredocs
+- Class: tooling, repeat
+- Barrier: B38 also denies sed -i with \n, \t or \\ in a code file
+- Level: hook
+- Repro: tests/test_loop.py test_shell_patching_of_code_is_denied
+- ADR: -
+- Status: closed
+- Closed: 2026-11-06
+
+## INC-2026-11-07-01: a heredoc patch lost one level of escapes, the third time
+- Date: 2026-11-07
+- Agent: claude-code
+- Found by: review
+- Where: h2/h2.py while building the Harness² step
+- Symptom: the patch had a double-escaped "\\n" in a Python string; the file got a real line break and a SyntaxError
+- Cause: the patch went bash heredoc -> Python source -> file. B38 checked only the shell syntax, and the heredoc was valid shell
+- Class: tooling, repeat
+- Barrier: B38 denies a heredoc into python, node, ruby or perl, or into a code file (`cat > x.py <<`), when the body has a double escape (two backslashes before n or t). The second form happened the same day in the patch for --auto-evolve. The level that drops the escape is the tool call of the agent, not bash: even a quoted heredoc lost it, so this entry itself was written with the Edit tool
+- Level: hook
+- Repro: tests/test_loop.py test_shell_patching_of_code_is_denied
+- ADR: -
+- Status: closed
+- Closed: 2026-11-07
+
+## INC-2026-11-07-02: a relative run folder made q07 fail 10 of 10 in the first real bench
+- Date: 2026-11-07
+- Agent: claude-code
+- Found by: review
+- Where: bench/run.py, the first real A/B (none vs self, 80 runs) and the gate of the first Harness² step
+- Symptom: q07 was "not solved" in all 10 runs of both arms, but the code of the agent was correct
+- Cause: --out was relative. check.py runs its probe from the workspace of the agent, so the probe path pointed into the workspace. A measurement error, not an agent error: without the review the report would have said "the harness does not help on q07"
+- Class: measurement, false result
+- Barrier: the run folder is always absolute; tests/test_bench.py runs the bench with a relative --out. The 10 runs and the 6 gate runs were run again
+- Level: hook
+- Repro: tests/test_bench.py (the fake bench runs with a relative --out; q07 must pass with the reference solution)
+- ADR: -
+- Status: closed
+- Closed: 2026-11-07

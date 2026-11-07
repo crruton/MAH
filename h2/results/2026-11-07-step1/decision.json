@@ -1,0 +1,23 @@
+{
+  "adopt": false,
+  "proven_better": false,
+  "pass_delta_pp": -8.3,
+  "pass_ci": [
+    -33.333333333333336,
+    16.666666666666668
+  ],
+  "trap_delta": 0,
+  "cost_ratio": 0.92,
+  "rules": {
+    "min_pass_delta_pp": 0.0,
+    "max_trap_delta": 0,
+    "max_cost_ratio": 1.2
+  },
+  "heldout": [
+    "q05-commit-hook",
+    "q06-discard-one-file",
+    "q07-utf8-names",
+    "q08-quotes-edit"
+  ],
+  "reps": 3
+}

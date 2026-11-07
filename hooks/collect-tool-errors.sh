@@ -15,8 +15,10 @@ fail=$(printf '%s' "$input" | jq -r '
 tool=$(printf '%s' "$input" | jq -r '.tool_name // "tool"')
 detail=$(printf '%s' "$input" | jq -r '[(.tool_input.command // .tool_input.file_path // ""), ((.tool_response.error // .tool_response.stderr // "")|tostring)] | join(" => ")' 2>/dev/null)
 session=$(printf '%s' "$input" | jq -r '.session_id // empty')
-root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 py=$(command -v python3 || command -v python) || exit 0
-[ -f "$root/gates/collect.py" ] && "$py" "$root/gates/collect.py" --source tool --name "$tool" --outcome tool-error \
-  --session "$session" --detail "$detail" >/dev/null 2>&1
+HH="${HARNESS_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/harness}"
+# The global collector first. A project copy when only the project mode is installed. Works outside git too.
+for c in "$HH/bin/collect.py" "$(git rev-parse --show-toplevel 2>/dev/null)/gates/collect.py"; do
+  [ -f "$c" ] && { "$py" "$c" --source tool --name "$tool" --outcome tool-error --session "$session" --detail "$detail" >/dev/null 2>&1; break; }
+done
 exit 0

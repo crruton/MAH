@@ -5,7 +5,8 @@
 zero=0000000000000000000000000000000000000000
 log_event() { # log_event <barrier> <detail>
     root=$(git rev-parse --show-toplevel 2>/dev/null); py=$(command -v python3 || command -v python)
-    [ -f "$root/gates/collect.py" ] && "$py" "$root/gates/collect.py" --source git-hook --barrier "$1" --name pre-push --detail "$2" >/dev/null 2>&1
+    c="$root/gates/collect.py"; [ -f "$c" ] || c="${HARNESS_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/harness}/bin/collect.py"
+    [ -f "$c" ] && "$py" "$c" --source git-hook --barrier "$1" --name pre-push --detail "$2" >/dev/null 2>&1
 }
 while read local_ref local_sha remote_ref remote_sha; do
     case "$remote_ref" in
