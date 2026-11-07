@@ -68,7 +68,15 @@ python tests/test_bench.py
 
 Вариант (arm) — папка харнеса: `CLAUDE.md`, `skills/<name>/SKILL.md`, `settings.json`. `none` — пустой харнес, `self` — правила, 5 скиллов и хуки этого кита; любой путь к папке — ваш вариант. Харнес ставится только в репозиторий задачи; `--setting-sources project` не пускает ваши пользовательские хуки и скиллы.
 
-CI: workflow `harness` → **Run workflow** запускает `bench` с секретом `ANTHROPIC_API_KEY` и выкладывает результаты артефактом.
+CI (нужен секрет `ANTHROPIC_API_KEY`; без него workflow пишут об этом и проходят):
+
+| Workflow | Когда | Что делает |
+|---|---|---|
+| `bench-gate` | PR меняет `templates/AGENTS.global.md`, `skills/`, хуки, `h2/policy.json`, `bench/` | харнес базовой ветки (со своими хуками, `arm --absolute`) против харнеса PR, 3 повтора; отчёт комментарием; `report --fail-if-worse` роняет job, если PR доказанно хуже по «решено» или попадает в ловушки |
+| `h2-weekly` | cron по понедельникам и вручную | `h2 auto`; если gate принял — `adopt --apply` переписывает правила и скиллы кита, Draft PR в `dev` с `step.md` в описании |
+| `harness` → Run workflow | вручную | `bench run` без харнеса против харнеса, артефакт с результатами |
+
+Для `h2-weekly` включите Settings → Actions → General → «Allow GitHub Actions to create and approve pull requests».
 
 ## Что считается и что доказывает
 

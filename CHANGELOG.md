@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.0] - 2026-11-09
+
+### Added
+- CI `bench-gate`: a PR that changes the rules, skills, hooks or the learning policy gets an A/B of the base harness against the PR harness as a comment, and fails when the PR is proven worse or hits more traps (`report --fail-if-worse`, `arm --absolute`).
+- CI `h2-weekly`: a Harness² step and gate every Monday; when the gate accepts, `adopt --apply` writes the tree into the kit rules and skills and a draft PR into dev carries step.md. It never merges.
+- step.json and step.md record the cost of a step, the improver part included.
+
+### Changed
+- README starts from the two loops (barriers each session, rules once a week), the measured results, the quick start, vendor-neutral executors and the CI.
+- The talk: slide 29 shows the CI that closes the process.
+
 ## [1.4.0] - 2026-11-07
 
 ### Added

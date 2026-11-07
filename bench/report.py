@@ -72,7 +72,7 @@ def paired(base, arm, key, scale=1.0):
     return [(a[key] - b[(a["task"], a["rep"])][key]) * scale for a in arm if (a["task"], a["rep"]) in b]
 
 
-def main(out: Path, base_name: str, arm_name: str) -> int:
+def main(out: Path, base_name: str, arm_name: str, fail_if_worse: bool = False) -> int:
     rows, cfg = load(out)
     rate = cfg.get("usd_rub") or dashboard.usd_rub()[0] or 0
     base = [r for r in rows if r["arm"] == base_name]
@@ -120,6 +120,12 @@ def main(out: Path, base_name: str, arm_name: str) -> int:
     text = "\n".join(L)
     (out / f"report-{arm_name}-vs-{base_name}.md").write_text(text, encoding="utf-8", newline="\n")
     print(text)
+    if fail_if_worse:  # the CI gate of a harness change: not proven worse, no new trap
+        _, lo, hi = boot([float(x) for x in paired(base, arm, "pass", 100)])
+        traps = sum(r["trap"] == "triggered" for r in arm) - sum(r["trap"] == "triggered" for r in base)
+        if (hi is not None and hi < 0) or traps > 0:
+            print(f"\nFAIL: {arm_name} is worse than {base_name}: solved interval {lo} … {hi}, traps {traps:+d}", file=sys.stderr)
+            return 1
     return 0
 
 

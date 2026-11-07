@@ -1,0 +1,82 @@
+name: h2-weekly
+
+# The harness improves itself once a week, and a human decides.
+# h2 auto: base runs, PROPOSE two edits, PROBE them, COMPOSE one (with no access to the checks),
+# then the GATE on held-out tasks. When the gate accepts, the job applies the tree to the rules and
+# skills of the kit and opens a DRAFT pull request into dev with step.md as its description.
+# It never merges. h2/policy.json limits what the harness may learn and what a step may spend.
+# Needs the repository secret ANTHROPIC_API_KEY. Without it the job says so and passes.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"  # Monday 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  step:
+    name: Harness² step, gate, draft PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GH_TOKEN: ${{ github.token }}
+      MODEL: ${{ vars.HARNESS_BENCH_MODEL || 'claude-haiku-5-5' }}
+      IMPROVER: ${{ vars.HARNESS_H2_IMPROVER_MODEL || 'claude-opus-5-5' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - name: secret check
+        id: key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::No ANTHROPIC_API_KEY secret: the weekly Harness² step did not run."
+            echo "run=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.run == '1'
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.run == '1'
+        with:
+          node-version: "20"
+      - name: tools
+        if: steps.key.outputs.run == '1'
+        run: sudo apt-get install -y jq && npm install -g @anthropic-ai/claude-code
+      - name: step and gate
+        id: h2
+        if: steps.key.outputs.run == '1'
+        run: |
+          name="$(date -u +%F)"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          set +e
+          python h2/h2.py auto --out "h2/runs/$name" --reps 3 --model "$MODEL" --improver-model "$IMPROVER"
+          echo "adopt=$([ $? -eq 0 ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+          mkdir -p "h2/results/$name"
+          cp "h2/runs/$name/step.md" "h2/runs/$name/decision.json" "h2/results/$name/" 2>/dev/null || true
+      - name: draft PR when the gate accepts
+        if: steps.h2.outputs.adopt == '1'
+        run: |
+          name="${{ steps.h2.outputs.name }}"
+          python h2/h2.py adopt --out "h2/runs/$name" --apply
+          git config user.name "self-harness h2"
+          git config user.email "h2@users.noreply.github.com"
+          git switch -c "h2/$name"
+          git add templates/AGENTS.global.md skills h2/adopted h2/library h2/results
+          git commit -m "Adopt the Harness² step of $name"
+          git push -u origin "h2/$name"
+          gh pr create --draft --base dev --head "h2/$name" --title "[h2] Правка харнеса за $name" --body-file "h2/adopted/$name/step.md"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.key.outputs.run == '1'
+        with:
+          name: h2-step
+          path: |
+            h2/runs
+            !h2/runs/**/stream.jsonl

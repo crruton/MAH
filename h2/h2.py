@@ -310,6 +310,12 @@ def step(a) -> int:
     reflect(comp, cands, out, train, base, base_runs, a)  # REFLECT
     spent = sum(r["cost_usd"] for r in base_runs) + sum(r["cost_usd"] for c in cands.values() for r in c["runs"]) + \
         sum(c["cost_usd"] for c in cands.values()) + comp["cost_usd"]
+    improver_usd = sum(c["cost_usd"] for c in cands.values()) + comp["cost_usd"]
+    info = json.loads((out / "step.json").read_text(encoding="utf-8"))
+    info.update(cost_rub=round(spent * rate, 1), improver_rub=round(improver_usd * rate, 1))
+    (out / "step.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
+    with (out / "step.md").open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"Стоимость шага: {spent * rate:.0f} ₽, из них улучшатель {improver_usd * rate:.0f} ₽ ({src}).\n\n")
     print(f"composed tree: {out / 'trees' / 'composed'}   spent {spent * rate:.0f} ₽\nnext: h2.py gate --out {out}")
     return 0
 
@@ -428,6 +434,14 @@ def adopt(a) -> int:
         LIB.mkdir(parents=True, exist_ok=True)
         with (LIB / "lessons.md").open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(pending.read_text(encoding="utf-8"))
+    if a.apply:  # the kit itself: the rules and skills that `install` and the "self" arm use
+        tree = dest
+        if (tree / "CLAUDE.md").exists():
+            shutil.copy(tree / "CLAUDE.md", KIT / "templates" / "AGENTS.global.md")
+        for s in sorted((tree / "skills").glob("*/SKILL.md")) if (tree / "skills").is_dir() else []:
+            (KIT / "skills" / s.parent.name).mkdir(parents=True, exist_ok=True)
+            shutil.copy(s, KIT / "skills" / s.parent.name / "SKILL.md")
+        print("applied to templates/AGENTS.global.md and skills/")
     print(f"adopted to {dest} and lessons to {LIB / 'lessons.md'}. Open a MR:\n"
           f"  git switch -c h2/{out.name} && git add h2/ && git commit -m \"Adopt the harness of h2 step {out.name}\" && git push -u origin h2/{out.name}")
     return 0
@@ -466,6 +480,7 @@ def main() -> int:
     au.add_argument("--improver-model", default=os.environ.get("HARNESS_H2_IMPROVER_MODEL", "claude-opus-5-5"))
     d = sub.add_parser("adopt")
     d.add_argument("--out", required=True)
+    d.add_argument("--apply", action="store_true", help="also write the tree into templates/AGENTS.global.md and skills/")
     sys.stdout.reconfigure(encoding="utf-8")  # before --help: the text has non-ASCII letters
     a = ap.parse_args()
     return {"step": step, "gate": gate, "adopt": adopt, "auto": auto}[a.cmd](a)

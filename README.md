@@ -2,37 +2,72 @@
 
 **Модель не учится между сессиями. Учится среда вокруг неё — и это видно по цифрам.**
 
-Агент в разработке ошибается. Обычно человек замечает ошибку и дописывает ещё одно правило в промпт; правила копятся, противоречат друг другу, а ошибки возвращаются. Здесь каждая ошибка агента сама попадает в журнал, повтор становится инцидентом, агент превращает инцидент в барьер с тестом, а дашборд проверяет, что ошибка больше не проходит и агент перестал её пытаться сделать.
+Агент в разработке ошибается. Обычно человек замечает ошибку и дописывает ещё одно правило в промпт; правила копятся, противоречат друг другу, а ошибки возвращаются. Здесь среда учится двумя петлями, и обе проверяются числами, а не ощущением.
 
 ```
-  ┌──────────► 1. ПОЙМАТЬ    хук, гейт или упавший вызов пишет событие          (автоматически)
-  │            2. ЗАМЕТИТЬ   повтор 3+ раз или растущая ошибка без барьера       (./harness.sh evolve)
-  │            3. ЗАПИСАТЬ   черновик инцидента в error.md                       (./harness.sh evolve)
-  │            4. ЗАПРЕТИТЬ  барьер против класса + атака-репро в CI              (агент, скилл error-to-rule)
-  │            5. НАУЧИТЬ    сообщение барьера + строка правила                  (агент; человек ревьюит MR)
-  └─────────── 6. ПРОВЕРИТЬ  0 попыток — выучено, >0 — держит, повтор — утечка   (./harness.sh dashboard)
+ Петля барьеров (каждая сессия)                       Петля правил — Harness² (раз в неделю)
+ ┌─► 1. ПОЙМАТЬ   хук, гейт, упавший вызов → событие   ┌─► 1. PROPOSE  две правки правил: общая и для вида работы
+ │   2. ЗАМЕТИТЬ  повтор или растущая ошибка → evolve   │   2. PROBE    обе прогоняются на тех же задачах
+ │   3. ЗАПИСАТЬ  черновик инцидента в error.md         │   3. COMPOSE  итог по разнице поведения, без доступа к проверкам
+ │   4. ЗАПРЕТИТЬ барьер против класса + репро в CI     │   4. GATE     A/B на отложенных задачах со скрытыми проверками
+ │   5. НАУЧИТЬ   сообщение барьера + строка правила    │   5. REFLECT  уроки → следующий шаг
+ └── 6. ПРОВЕРИТЬ дашборд: 0 попыток — выучено          └── 6. MR      Draft PR с step.md; сливает человек
 ```
 
-Человек в петле один раз: ревьюит MR с новым барьером. Всё остальное делают хуки, `evolve` и агент. Подробно — [docs/LOOP.md](docs/LOOP.md), доклад — [docs/TALK.md](docs/TALK.md).
+Человек участвует в двух местах: ревьюит PR с новым барьером или правилом и решает, ошибка ли это вообще. Чему харнес может учиться, а чему нет, записано в одном файле — [h2/policy.json](h2/policy.json): например, он не может добавить правило «можно `--no-verify`» и не может удалить правило про секреты. Подробно — [docs/LOOP.md](docs/LOOP.md) и [docs/BENCH.md](docs/BENCH.md), доклад — [docs/TALK.md](docs/TALK.md).
 
-**Доказательство, а не корреляция.** `./harness.sh bench` — A/B вариантов харнеса на задачах разработки с ловушками: одна модель, скрытые проверки, повторы, 95% интервалы, рубли. `./harness.sh h2` — метод [Harness²](https://github.com/google-research/harness2): харнес предлагает себе правку, проверяет её на тех же задачах, собирает итог и принимается только после проверки на отложенных задачах. Чему харнес может учиться, а чему нет, — один файл [h2/policy.json](h2/policy.json); каждый шаг пишет `step.md` с диффом и обоснованием для MR. Исполнитель — Claude Code или OpenCode с любым провайдером (`--model provider/model`). Что подавать на вход и что доказывает каждая цифра — [docs/BENCH.md](docs/BENCH.md). Автозапуск петли без человека: `./harness.sh install --auto-evolve`.
+*A self-improving harness for AI coding agents. Hooks and gates catch agent errors, repeats become draft incidents, the agent turns each into a barrier with a repro test. Once a week the Harness² method (google-research/harness2) proposes, probes and composes an edit of the rules, and an A/B bench with hidden checks decides; a human merges the draft PR. Claude Code or OpenCode with any provider. ~160 tokens per session, ~110 ms per tool call. Docs in Russian, costs in rubles. MIT.*
 
-*A self-improving harness for AI coding agents (Claude Code). Agent errors are captured by hooks and gates, repeats become draft incidents, the agent turns each incident into a barrier with a repro test, and a dashboard checks that the error stops and the agent stops trying — fewer errors, cheaper, faster. One global install, ~160 tokens per session, ~110 ms per tool call. Docs in Russian, costs in rubles. MIT.*
+## Что показали замеры
+
+A/B на 8 задачах разработки с ловушками, `claude-haiku-5-5`, 5 повторов, 80 прогонов, 34 ₽ на весь замер ([отчёт](bench/results/2026-11-07-haiku/report-self-vs-none.md)):
+
+| | без харнеса | с харнесом | вывод |
+|---|---|---|---|
+| Решено | 85% | 95% | +10 п.п., не доказано (интервал −2,5…+25) |
+| Попал в ловушку | 4 из 40 | 0 из 40 | все 4 — чтение `.env`; барьер B06 |
+| Время на задачу | 37 с | 43 с | медленнее, доказано |
+| Упавших вызовов | 0,3 | 0,6 | больше, доказано |
+
+Первый шаг Harness² ([step.md](h2/results/2026-11-07-step1/step.md)): харнес добавил себе 14 правил по своим траекториям. На отложенных задачах агент стал быстрее на 12 с и ошибался в вызовах реже (оба доказано), но решил на 8,3 п.п. меньше, и gate правку отклонил.
+
+Харнес доказанно останавливает ошибку, против которой у него есть барьер, и доказанно стоит времени. Что он делает агента умнее в целом — пока не доказано; это говорится вслух.
+
+## Быстрый старт
 
 ```bash
 git clone https://github.com/crruton/self-harness.git
 cd self-harness
-./harness.sh install      # Windows: harness.cmd install  (нужен Git for Windows и jq)
-./harness.sh demo         # 36 атак должны остановиться, 17 обычных действий — пройти
-./harness.sh dashboard    # становится ли агент лучше: ~/.claude/harness/dashboard.html
-./harness.sh evolve .     # один оборот петли: черновики инцидентов и задачи для агента
+./harness.sh install --auto-evolve   # Windows: harness.cmd install  (нужен Git for Windows и jq)
+./harness.sh demo                     # 36 атак должны остановиться, 17 обычных действий — пройти
+./harness.sh dashboard                # становится ли агент лучше: ~/.claude/harness/dashboard.html
+python tests/test_bench.py            # бенч и шаг Harness² без модели и без денег
+./harness.sh bench run --reps 3       # A/B на модели, ~35 ₽ на Haiku
+./harness.sh h2 auto                  # шаг Harness² + gate: прогоны ~17 ₽ + вызовы улучшателя
 ```
 
 Удалить: `./harness.sh uninstall`. Ваши настройки, хуки и скиллы остаются как были.
 
-## Дашборд: становится ли агент лучше
+## Без привязки к вендору
 
-Последние 4 недели против 4 предыдущих:
+| `--model` | Исполнитель | Барьеры |
+|---|---|---|
+| `claude-haiku-5-5` | Claude Code: `CLAUDE.md`, `.claude/` | хук `guard.sh` |
+| `deepseek/…`, `openrouter/…`, `groq/…`, `ollama/…` | OpenCode: `AGENTS.md`, `.opencode/` | тот же `guard.sh` через плагин `hooks/opencode-guard.js` |
+
+## CI в этом репозитории
+
+| Workflow | Когда | Что делает |
+|---|---|---|
+| `harness` | каждый push и PR | демо 36 атак, установка и удаление, проектный режим, репро-тесты, бенч и Harness² на заглушке |
+| `bench-gate` | PR меняет правила, скиллы, хуки или политику | A/B «харнес `main` против харнеса PR», отчёт комментарием в PR, падает, если PR доказанно хуже или попадает в ловушки |
+| `h2-weekly` | понедельник 03:00 UTC и вручную | шаг Harness² и gate; если gate принял — Draft PR в `dev` с `step.md`. Не сливает |
+
+Бенчу нужен секрет `ANTHROPIC_API_KEY` (Settings → Secrets → Actions). Без него оба workflow пишут об этом и проходят. Для `h2-weekly` включите Settings → Actions → «Allow GitHub Actions to create and approve pull requests». Модель и бюджет: переменные `HARNESS_BENCH_MODEL`, `HARNESS_H2_IMPROVER_MODEL`, `HARNESS_BENCH_BUDGET_RUB`.
+
+## Дашборд: становится ли агент лучше в работе
+
+Бенч доказывает на задачах с проверками; дашборд показывает, держится ли эффект в настоящей работе. Последние 4 недели против 4 предыдущих:
 
 | Вопрос | Метрика |
 |---|---|
@@ -42,7 +77,7 @@ cd self-harness
 | Быстрее | активное время сессии (паузы 5+ минут не считаются) |
 | Меньше нагрузки на человека | вопросы барьеров и отказы человека на сессию |
 
-Для каждого инцидента — что стало после барьера: «агент не пытается», «барьер держит, агент пытается», «утечка». Отдельно: ошибки, остановленные до первого инцидента; новые варианты, которые барьеры поймали без подсказки; кандидаты в следующие барьеры. Знаменатель (вызовы, токены, деньги) берётся из журналов сессий Claude Code, поэтому хуки на успешных вызовах ничего не стоят. Курс: `HARNESS_USD_RUB`, иначе курс ЦБ на сегодня (один GET к cbr.ru, ничего не отправляется), иначе последний сохранённый; `HARNESS_OFFLINE=1` — без сети.
+Для каждого инцидента — что стало после барьера: «агент не пытается», «барьер держит, агент пытается», «утечка». Знаменатель (вызовы, токены, деньги) берётся из журналов сессий Claude Code, поэтому хуки на успешных вызовах ничего не стоят. Курс: `HARNESS_USD_RUB`, иначе курс ЦБ на сегодня (один GET к cbr.ru, ничего не отправляется), иначе последний сохранённый; `HARNESS_OFFLINE=1` — без сети.
 
 ---
 
@@ -175,7 +210,8 @@ cd self-harness
 ./harness.sh                       меню
 ./harness.sh install [--rules] [--no-tool-errors] [--auto-evolve]
 ./harness.sh bench run|report [--arms none,self] [--reps 3] [--model M] [--budget-rub 1500]
-./harness.sh h2 step|gate|adopt --out DIR
+./harness.sh bench report --out DIR [--base none] [--arm self] [--fail-if-worse]
+./harness.sh h2 step|gate|auto --out DIR   |   h2 adopt --out DIR [--apply]
 ./harness.sh uninstall [--purge]
 ./harness.sh demo [Bnn]
 ./harness.sh errors [--project NAME] [--suggest]

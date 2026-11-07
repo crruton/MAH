@@ -242,9 +242,13 @@ Lock Board в памяти. Хуки работают только в Claude Cod
 **29. Что забрать себе** [стар. 46 + новый]
 ```
 git clone https://github.com/crruton/self-harness
-./harness.sh install && ./harness.sh demo
-./harness.sh evolve . && ./harness.sh dashboard
+./harness.sh install --auto-evolve && ./harness.sh demo
+./harness.sh bench run && ./harness.sh h2 auto
 ```
+Процесс замкнут в CI репозитория:
+- `bench-gate` — каждый PR, который меняет правила, скиллы, хуки или политику, получает A/B «main против PR» комментарием и падает, если доказанно хуже;
+- `h2-weekly` — раз в неделю харнес сам предлагает себе правку и открывает Draft PR с `step.md`. Сливает человек.
+
 Порядок внедрения: шаги 1–6 из PROCESS.md. QR-код на репозиторий.
 
 ---

@@ -73,7 +73,8 @@ def tasks(selector: str):
 
 # ---------------------------------------------------------------- arms
 
-def write_self_arm(dest: Path) -> Path:
+def write_self_arm(dest: Path, absolute: bool = False) -> Path:
+    """absolute=True writes the path of THIS kit into the hooks: CI builds the arm of the base branch from its own checkout."""
     """The kit as a harness tree: global rules, 5 process skills, guard and collector hooks."""
     dest.mkdir(parents=True, exist_ok=True)
     shutil.copy(KIT / "templates" / "AGENTS.global.md", dest / "CLAUDE.md")
@@ -86,7 +87,10 @@ def write_self_arm(dest: Path) -> Path:
                         "hooks": [{"type": "command", "command": 'bash "${KIT}/hooks/guard.sh"', "timeout": 10}]}],
         "PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": 'bash "${KIT}/hooks/collect-tool-errors.sh"', "timeout": 10}]}],
     }}
-    (dest / "settings.json").write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8", newline="\n")
+    body = json.dumps(settings, indent=2) + "\n"
+    if absolute:
+        body = body.replace("${KIT}", posix(KIT))
+    (dest / "settings.json").write_text(body, encoding="utf-8", newline="\n")
     return dest
 
 
@@ -335,18 +339,20 @@ def main() -> int:
     rp.add_argument("--out", required=True)
     rp.add_argument("--base", default="none")
     rp.add_argument("--arm", default="self")
+    rp.add_argument("--fail-if-worse", action="store_true", help="exit 1 when the arm is proven worse in solved share, or hits more traps")
     w = sub.add_parser("arm")
     w.add_argument("name", choices=["self"])
     w.add_argument("dest")
+    w.add_argument("--absolute", action="store_true", help="hooks point to this kit, not to the kit that runs the bench")
     sys.stdout.reconfigure(encoding="utf-8")  # before --help: the text has non-ASCII letters
     a = ap.parse_args()
     if a.cmd == "run":
         return run(a)
     if a.cmd == "arm":
-        print(write_self_arm(Path(a.dest)))
+        print(write_self_arm(Path(a.dest), a.absolute))
         return 0
     import report
-    return report.main(Path(a.out), a.base, a.arm)
+    return report.main(Path(a.out), a.base, a.arm, a.fail_if_worse)
 
 
 if __name__ == "__main__":
