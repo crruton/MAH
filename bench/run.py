@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bench: does a harness make the agent better on real dev tasks? A/B with repeats and a hidden check.
 
-  run.py run    --arms none,self --tasks all --reps 3 --model claude-haiku-5-5 [--jobs 4] [--out DIR]
+  run.py run    --arms none,self --tasks all --reps 3 [--model M] [--jobs 4] [--out DIR]
   run.py report --out DIR [--base none] [--arm self]
   run.py arm    self DIR      write the "self" arm (the rules, skills and hooks of this kit) to DIR
 
@@ -16,7 +16,7 @@ A harness tree (an arm) is a folder:  CLAUDE.md, skills/<name>/SKILL.md, setting
 (settings.json may use ${KIT} for the path of this kit). "none" is the empty tree.
 
 Executor: the model id picks it, as in harness2. "provider/model" (deepseek/..., openrouter/..., groq/...,
-ollama/...) runs OpenCode: any provider, no vendor lock. A bare id (claude-haiku-5-5) runs Claude Code.
+ollama/...) runs OpenCode: any provider, no vendor lock. A bare id (claude-...) runs Claude Code.
 HARNESS_BENCH_EXECUTOR=fake runs the reference solution or the trap with no model (tests).
 The same arm installs as CLAUDE.md + .claude/ for Claude Code, and as AGENTS.md + .opencode/ for OpenCode;
 the guard is the same guard.sh: a hook in Claude Code, hooks/opencode-guard.js in OpenCode.

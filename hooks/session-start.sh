@@ -7,5 +7,5 @@ f="$HH/evolve/$(basename "$root").md"
 [ -s "$f" ] || exit 0
 n=$(grep -c '^- ' "$f")
 [ "$n" -gt 0 ] || exit 0
-echo "self-harness: $n harness task(s) from ./harness.sh evolve wait for this repository, list in $f. Tell the user in one line at the start. Do them only when the user asks."
+echo "MAH: $n harness task(s) from ./harness.sh evolve wait for this repository, list in $f. Tell the user in one line at the start. Do them only when the user asks."
 exit 0

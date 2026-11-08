@@ -28,4 +28,4 @@ export const HarnessGuard = async () => ({
   },
 });
 
-export default { id: "self-harness.guard", server: HarnessGuard };
+export default { id: "mah.guard", server: HarnessGuard };

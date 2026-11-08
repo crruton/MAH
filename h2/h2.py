@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harness² for dev tasks: the method of google-research/harness2 on the self-harness bench.
+"""Harness² for dev tasks: the method of google-research/harness2 on the MAH bench.
 
   h2.py step  --out DIR [--base self|DIR] [--tasks train] [--model M] [--improver-model M]
   h2.py gate  --out DIR [--tasks heldout] [--reps 3]

@@ -1,12 +1,22 @@
 # Changelog
 
+## [1.7.0] - 2026-11-08
+
+### Added
+- docs/MAH-HighLoad-2026.pptx: the talk deck after docs/TALK.md, 44 slides with the speaker narration in the slide notes.
+
+### Changed
+- The kit is named MAH (my automated harness). The GitHub URL stays.
+- The prose does not name the model of the bench runs; the run data keep it.
+- README, PROCESS.md and docs/BENCH.md match the kit: demo 36 attacks and 17 normal actions, 46 bench tasks (24 train, 22 held out), bench cost ~130 rubles for 2 arms × 3 reps, the lean arm, the lean rules as the start of a project AGENTS.md, OpenCode barriers through the plugin, install from a clone on Windows.
+
 ## [1.6.0] - 2026-11-08
 
 ### Added
 - 30 hard bench tasks (q17-q46) and 8 more (q09-q16) from the damage classes of the incident logs, committed before the runs. 46 tasks in all.
 - The lean arm: templates/AGENTS.lean.md, 10 rules for the damage classes, with the same barriers.
 - Damage per run in the report (lost work, rewritten history, secret in the context, skipped checks, weakened tests, cut code, edits of generated or applied files), the rate of unsolved tasks, a headline table with relative change.
-- bench/merge.py joins several runs for one report. docs/RESULTS.md: 924 runs, claude-haiku-5-5, 438 rubles. Lean against no harness: dangerous runs 14% -> 3% (-80%), unsolved 20% -> 13% (-34%), both proven; +14% rubles, +17% time.
+- bench/merge.py joins several runs for one report. docs/RESULTS.md: 924 runs, 438 rubles. Lean against no harness: dangerous runs 14% -> 3% (-80%), unsolved 20% -> 13% (-34%), both proven; +14% rubles, +17% time.
 
 ### Fixed
 - B06 let `cat .env*` pass (INC-2026-11-09-01). B38 also stops `python -c` with a double escape (INC-2026-11-09-03).
@@ -28,7 +38,7 @@
 ### Added
 - OpenCode executor: `--model provider/model` runs any provider; the arm installs as AGENTS.md and .opencode/, hooks/opencode-guard.js sends each tool call to guard.sh.
 - h2/policy.json: what the harness may learn (editable files, forbidden rules, protected safety lines, gate thresholds, budget). step.md for each step: diff, reasons, what the policy rejected, the gate decision. `h2 auto`.
-- First real results: bench/results/2026-11-07-haiku (80 runs, 34 rubles: traps 4/40 → 0/40, solved +10 p.p. not proven, slower and dearer — proven) and h2/results/2026-11-07-step1 (14 new rules, faster and fewer failed calls, solved −8.3 p.p.: the gate rejected it).
+- First real results: bench/results/2026-11-07-first (80 runs, 34 rubles: traps 4/40 → 0/40, solved +10 p.p. not proven, slower and dearer — proven) and h2/results/2026-11-07-step1 (14 new rules, faster and fewer failed calls, solved −8.3 p.p.: the gate rejected it).
 
 ### Fixed
 - A relative --out made the q07 check fail 10 of 10 (INC-2026-11-07-02).

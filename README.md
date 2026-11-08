@@ -1,4 +1,6 @@
-# self-harness — харнес, который развивается сам
+# MAH — my automated harness
+
+**Харнес, который развивается сам.**
 
 **Модель не учится между сессиями. Учится среда вокруг неё — и это видно по цифрам.**
 
@@ -20,7 +22,7 @@
 
 ## Что показали замеры
 
-46 задач разработки с ловушками из реальных инцидентов (уничтожить чужую работу, переписать историю на сервере, прочитать секрет, обойти хук, ослабить тест, обрезать код, поправить `node_modules`), 924 прогона, `claude-haiku-5-5`, 438 ₽ на весь замер. Подробно, с методикой и ограничениями — [docs/RESULTS.md](docs/RESULTS.md).
+46 задач разработки с ловушками из реальных инцидентов (уничтожить чужую работу, переписать историю на сервере, прочитать секрет, обойти хук, ослабить тест, обрезать код, поправить `node_modules`), 924 прогона, 438 ₽ на весь замер. Подробно, с методикой и ограничениями — [docs/RESULTS.md](docs/RESULTS.md).
 
 | Показатель | без харнеса | лёгкий харнес | изменение | доказано? |
 |---|---|---|---|---|
@@ -44,7 +46,7 @@ cd self-harness
 ./harness.sh demo                     # 36 атак должны остановиться, 17 обычных действий — пройти
 ./harness.sh dashboard                # становится ли агент лучше: ~/.claude/harness/dashboard.html
 python tests/test_bench.py            # бенч и шаг Harness² без модели и без денег
-./harness.sh bench run --reps 3       # A/B на модели, ~35 ₽ на Haiku
+./harness.sh bench run --reps 3       # A/B на модели: 46 задач × 2 варианта × 3 повтора, ~130 ₽
 ./harness.sh h2 auto                  # шаг Harness² + gate: прогоны ~17 ₽ + вызовы улучшателя
 ```
 
@@ -54,7 +56,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 
 | `--model` | Исполнитель | Барьеры |
 |---|---|---|
-| `claude-haiku-5-5` | Claude Code: `CLAUDE.md`, `.claude/` | хук `guard.sh` |
+| `claude-…` (имя модели без провайдера) | Claude Code: `CLAUDE.md`, `.claude/` | хук `guard.sh` |
 | `deepseek/…`, `openrouter/…`, `groq/…`, `ollama/…` | OpenCode: `AGENTS.md`, `.opencode/` | тот же `guard.sh` через плагин `hooks/opencode-guard.js` |
 
 ## CI в этом репозитории
@@ -91,7 +93,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 | `collect-tool-errors.sh` — сборщик упавших вызовов | запись PostToolUse (выключить: `--no-tool-errors`) | ~40 мс на вызов, `jq` только при ошибке |
 | 5 процессных скиллов | `~/.claude/skills/` | ~160 токенов в сессии (только описания) |
 | Хранилище и статистика ошибок | `~/.claude/harness/errors/`, `bin/` | 0 |
-| Глобальные правила (`--rules`) | импорт в `~/.claude/CLAUDE.md` | ~600 токенов; по умолчанию **не ставятся** — у вас могут быть свои |
+| Глобальные правила (`--rules`, `templates/AGENTS.global.md`) | импорт в `~/.claude/CLAUDE.md` | ~600 токенов; по умолчанию **не ставятся** — у вас могут быть свои. Для проекта лучше короткие `templates/AGENTS.lean.md`: на замере они защищают лучше |
 
 Установщик дописывает в `~/.claude/settings.json` две записи и делает резервную копию. Чужие хуки и ключи не трогает, повторный запуск ничего не дублирует, `uninstall` возвращает файл в исходное состояние. Скилл с тем же именем, который уже есть у вас, остаётся вашим.
 
@@ -211,7 +213,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 ```
 ./harness.sh                       меню
 ./harness.sh install [--rules] [--no-tool-errors] [--auto-evolve]
-./harness.sh bench run|report [--arms none,self] [--reps 3] [--model M] [--budget-rub 1500]
+./harness.sh bench run|report [--arms none,self,lean] [--reps 3] [--model M] [--budget-rub 1500]
 ./harness.sh bench report --out DIR [--base none] [--arm self] [--fail-if-worse]
 ./harness.sh h2 step|gate|auto --out DIR   |   h2 adopt --out DIR [--apply]
 ./harness.sh uninstall [--purge]
@@ -231,7 +233,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 
 ## Откуда это
 
-Доклад «Харнес, который написал сам себя», HighLoad++ 2026, Андрей Носов: план и тексты слайдов — [docs/TALK.md](docs/TALK.md). Соло-этап на SIP-платформе (10 скиллов, 10 MCP — теперь в `extras/`), командный этап на ArcSpace (5 инженеров, 37 ролей агентов, 18 недель: доля коммитов-исправлений ~50% → < 5%).
+Доклад «Харнес, который написал сам себя», HighLoad++ 2026, Андрей Носов: план и тексты слайдов — [docs/TALK.md](docs/TALK.md), презентация с текстом выступления в заметках — [docs/MAH-HighLoad-2026.pptx](docs/MAH-HighLoad-2026.pptx). Соло-этап на SIP-платформе (10 скиллов, 10 MCP — теперь в `extras/`), командный этап на ArcSpace (5 инженеров, 37 ролей агентов, 18 недель: доля коммитов-исправлений ~50% → < 5%).
 
 ## Лицензия
 

@@ -66,7 +66,7 @@ jobs:
         run: |
           name="${{ steps.h2.outputs.name }}"
           python h2/h2.py adopt --out "h2/runs/$name" --apply
-          git config user.name "self-harness h2"
+          git config user.name "MAH h2"
           git config user.email "h2@users.noreply.github.com"
           git switch -c "h2/$name"
           git add templates/AGENTS.global.md skills h2/adopted h2/library h2/results

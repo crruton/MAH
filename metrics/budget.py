@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What self-harness costs the agent: tokens in each session and latency on each tool call.
+"""What MAH costs the agent: tokens in each session and latency on each tool call.
 
   budget.py [--repo PATH] [--runs N]
 
@@ -135,8 +135,8 @@ def main() -> int:
     s_ours = sum(t for _, t in ours)
     m_tok = sum(t or 0 for _, _, t in m_rows)
 
-    print(f"# self-harness budget ({METHOD})\n")
-    print("## Tokens that self-harness adds to each session")
+    print(f"# MAH budget ({METHOD})\n")
+    print("## Tokens that MAH adds to each session")
     print(f"  skills        {s_ours:>6}   {len(ours)} descriptions: {', '.join(n for n, _ in ours) or 'none'}")
     print(f"  rules         {rules:>6}   {'harness/AGENTS.md (--rules)' if rules else 'not installed (your CLAUDE.md stays as it is)'}")
     if m_rows:
