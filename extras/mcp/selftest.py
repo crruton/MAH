@@ -129,7 +129,10 @@ def main():
 
     rt = m["redteam_runner"]
     sc = rt.list_scenarios()
-    check("redteam_runner: 25 scenarios", len(sc) == 25, f"{len(sc)}")
+    # the demo grows with each new barrier, so check the shape, not a fixed count
+    ids = [s.get("id") for s in sc]
+    check("redteam_runner: scenarios listed, unique, complete",
+          len(sc) >= 25 and len(set(ids)) == len(ids) and all(s.get("barrier") and s.get("attack") for s in sc), f"{len(sc)}")
     check("redteam_runner: B01 blocked", rt.run_scenario("B01")["blocked"] is True)
 
     qg = m["quality_gate"]

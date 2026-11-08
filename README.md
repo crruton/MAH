@@ -43,7 +43,7 @@
 git clone https://github.com/crruton/self-harness.git
 cd self-harness
 ./harness.sh install --auto-evolve   # Windows: harness.cmd install  (нужен Git for Windows и jq)
-./harness.sh demo                     # 36 атак должны остановиться, 17 обычных действий — пройти
+./harness.sh demo                     # 37 атак должны остановиться, 18 обычных действий — пройти
 ./harness.sh dashboard                # становится ли агент лучше: ~/.claude/harness/dashboard.html
 python tests/test_bench.py            # бенч и шаг Harness² без модели и без денег
 ./harness.sh bench run --reps 3       # A/B на модели: 46 задач × 2 варианта × 3 повтора, ~130 ₽
@@ -63,7 +63,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 
 | Workflow | Когда | Что делает |
 |---|---|---|
-| `harness` | каждый push и PR | демо 36 атак, установка и удаление, проектный режим, репро-тесты, бенч и Harness² на заглушке |
+| `harness` | каждый push и PR | демо 37 атак, установка и удаление, проектный режим, репро-тесты, бенч и Harness² на заглушке |
 | `bench-gate` | PR меняет правила, скиллы, хуки или политику | A/B «харнес `main` против харнеса PR», отчёт комментарием в PR, падает, если PR доказанно хуже или попадает в ловушки |
 | `h2-weekly` | понедельник 03:00 UTC и вручную | шаг Harness² и gate; если gate принял — Draft PR в `dev` с `step.md`. Не сливает |
 
@@ -89,7 +89,7 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 
 | Что | Куда | Стоимость |
 |---|---|---|
-| `guard.sh` — барьеры B04–B06, B28–B33, B38 | `~/.claude/harness/hooks/`, запись PreToolUse в `settings.json` | ~70 мс на вызов инструмента |
+| `guard.sh` — барьеры B04–B06, B28–B33, B38, B39; `mask-output.py` — маска секретов для B39 | `~/.claude/harness/hooks/`, запись PreToolUse в `settings.json` | ~70 мс на вызов инструмента |
 | `collect-tool-errors.sh` — сборщик упавших вызовов | запись PostToolUse (выключить: `--no-tool-errors`) | ~40 мс на вызов, `jq` только при ошибке |
 | 5 процессных скиллов | `~/.claude/skills/` | ~160 токенов в сессии (только описания) |
 | Хранилище и статистика ошибок | `~/.claude/harness/errors/`, `bin/` | 0 |
@@ -105,13 +105,13 @@ python tests/test_bench.py            # бенч и шаг Harness² без мо
 
 | Уровень | Что | Почему |
 |---|---|---|
-| **Запретить** | B05: `git reset --hard`, `git clean -f`, `git checkout -- .`, `git restore .`, force-push (в том числе `--force-with-lease`), удаление ветки на сервере, `rm -rf` для `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`; B06: чтение и правка `.env`, ключей, сертификатов, `secrets/`; B28: `--no-verify`, `HUSKY=0`; B31: хранилища токенов (`~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `.git-credentials`, `.netrc`, `~/.ssh/id_*`); B32: ручная правка lock-файлов и `node_modules/`, `.venv/` | теряется незакоммиченная работа или чужая история; хук нашёл проблему, а агент её обходит; секреты не должны попадать в контекст модели; lock-файл расходится со сборкой |
+| **Запретить** | B05: `git reset --hard`, `git clean -f`, `git checkout -- .`, `git restore .`, force-push (в том числе `--force-with-lease`), удаление ветки на сервере, `rm -rf` для `/`, `~`, `$HOME`, `.`, `..`, `*`, `.git`; B06: чтение и правка `.env`, ключей, сертификатов, `secrets/`, конфигов с паролями (`*.local.json`, `settings.local.*`, `credentials.json`, `secrets.json`, `secrets.yaml`, `secrets.toml`); B28: `--no-verify`, `HUSKY=0`; B31: хранилища токенов (`~/.aws/credentials`, `~/.kube/config`, `~/.docker/config.json`, `.git-credentials`, `.netrc`, `~/.ssh/id_*`); B32: ручная правка lock-файлов и `node_modules/`, `.venv/` | теряется незакоммиченная работа или чужая история; хук нашёл проблему, а агент её обходит; секреты не должны попадать в контекст модели; lock-файл расходится со сборкой |
 | **Спросить** | B04: полный прогон тестов (npm, pytest, go, cargo, maven, gradle, dotnet, rspec, phpunit, mix, swift, flutter, deno, ctest, make test); B05: `git branch -D`, `DROP`/`TRUNCATE`, `docker system/volume prune`; B29: `curl … \| sh`; B30: `npm publish`, `docker push`, `terraform apply`, `kubectl delete`, `helm upgrade`, деплой; B31: `env`, `printenv`, `echo $…TOKEN`; B33: правка хуков и настроек агента | бывает нужно, но действие уходит за пределы машины, открывает секреты или меняет защиту самого агента |
-| **Пропустить** | всё остальное: `rm -rf build`, `docker compose down -v`, `git push origin dev`, `git push -n`, тесты пакета, `terraform plan`, `curl … \| jq`, `printenv PATH`, `.env.example`, `*.pub` | обычная работа |
+| **Маскировать** | B39: команда, в которой только тесты (`pytest`, `npm test`, `python -m unittest`, `go test`…) и чтение (`cd`, `cat`, `ls`, `grep`, `tail`, `git status`…), в репозитории с секретными файлами. Например `cd DIR && cat CLAUDE.md && pytest 2>&1 \| tail` | упавший тест печатает то, что прочитал, и секрет из `.env` попадает в контекст модели. Хук пропускает вывод через фильтр, который заменяет значения секретных файлов и известные форматы токенов на `***`; код возврата теста сохраняется. Такую команду хук разрешает без вопроса. Выключить: `HARNESS_MASK=0` | всё остальное: `rm -rf build`, `docker compose down -v`, `git push origin dev`, `git push -n`, тесты пакета, `terraform plan`, `curl … \| jq`, `printenv PATH`, `.env.example`, `*.pub` | обычная работа |
 
 Проверки видят команду и внутри обёрток: `sh -c '…'`, `bash -c`, `python -c`. «Спросить» — это ответ хука `permissionDecision: "ask"` в Claude Code: агент не упирается в стену, человек решает одним нажатием. Полный прогон тестов без вопроса: `CLAUDE_FULL_TESTS=1 <команда>`.
 
-Демо проверяет обе стороны: 36 атак должны остановиться и 17 обычных действий должны пройти без вопроса. Ложное срабатывание проваливает демо так же, как пропущенная атака.
+Демо проверяет обе стороны: 37 атак должны остановиться и 18 обычных действий должны пройти без вопроса. Ложное срабатывание проваливает демо так же, как пропущенная атака.
 
 ## Сборщик и статистика ошибок
 

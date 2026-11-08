@@ -25,6 +25,11 @@ export const HarnessGuard = async () => ({
       const m = /permissionDecisionReason":"([^"]*)/.exec(r.stdout);
       throw new Error(`Blocked by guard.sh: a human must confirm: ${m ? m[1] : "this action"}`);
     }
+    // B39: the guard changed the command (the test output goes through the secret mask)
+    try {
+      const u = JSON.parse(r.stdout || "{}").hookSpecificOutput?.updatedInput;
+      if (u && u.command && output && output.args) output.args.command = u.command;
+    } catch { /* not JSON: nothing to change */ }
   },
 });
 

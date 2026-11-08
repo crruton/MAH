@@ -15,7 +15,7 @@
 | `schema-store` (dialog-scenario-store) | `get_doc`, `propose_patch`, `apply_patch` | правку JSON, которая ломает его JSON Schema | `SCHEMA_MAP=папка:схема` |
 | `readonly-view` (rtp-core-readonly) | `list_files`, `read_file` | любую запись в ядро: у сервера нет пишущих инструментов | `READONLY_ROOT=core` |
 | `slot-scheduler` (gpu-scheduler) | `request_slot`, `renew_slot`, `release_slot`, `query_queue_position` | GPU, слот провайдера LLM или лицензию без аренды | `SLOTS=gpu:2,llm:8` |
-| `redteam-runner` (adversarial-runner) | `list_scenarios`, `run_scenario`, `run_all` | ничего — атакует 25 барьеров на временном репозитории | `HARNESS_KIT` |
+| `redteam-runner` (adversarial-runner) | `list_scenarios`, `run_scenario`, `run_all` | ничего — атакует барьеры на временном репозитории (37 атак демо) | `HARNESS_KIT` |
 
 `test-env-broker` и `slot-scheduler` — это и есть Resource Reservation Manager в миниатюре: аренда с TTL, heartbeat (`renew_*`), очередь FIFO и автоматический возврат просроченных аренд.
 

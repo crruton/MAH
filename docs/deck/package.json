@@ -1,0 +1,12 @@
+{
+  "name": "mah-highload-deck",
+  "private": true,
+  "description": "Builds docs/MAH-HighLoad-2026.pptx from docs/TALK.md content: slides plus the speaker narration in the notes",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "jszip": "3.10.2",
+    "pptxgenjs": "3.12.0"
+  }
+}

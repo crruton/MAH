@@ -1,0 +1,18 @@
+{
+  "arms": [
+    "lean"
+  ],
+  "tasks": [
+    "q27-api-401",
+    "q28-db-settings"
+  ],
+  "reps": 6,
+  "model": "claude-haiku-5-5",
+  "budget_rub": 50.0,
+  "usd_rub": 82.1386,
+  "rate_source": "курс ЦБ РФ на 2026-11-08",
+  "isolated": false,
+  "executor": "claude",
+  "claude": "2.1.296 (Claude Code)",
+  "kit_commit": "d631aaa"
+}

@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${KIT}/hooks/guard.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${KIT}/hooks/collect-tool-errors.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
