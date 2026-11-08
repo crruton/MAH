@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.0] - 2026-11-09
+
+### Changed
+- The talk deck is rebuilt on the HighLoad++ 2026 organizer template (34 slides, page numbers and logo of the template). The story leans to high load: agents as a new load on the SDLC, their failures as the failures of loaded systems (race, resource contention, limits, irreversible writes, leaks, cost blow-up), the harness as a control plane with a latency budget. New slides on the mechanism: the hot path (guard.sh in each call), the cold path (evolve, signatures, error-to-rule), the B39 story with its three tries. The octopus mascot of the draft deck is back, cut out with a transparent background.
+- docs/deck/build.py (python-pptx on the template) replaces the pptxgenjs generator; `--font` checks text fit with Montserrat metrics. The template is the organizer's file and is not in the repository.
+
 ## [1.8.0] - 2026-11-09
 
 ### Added

@@ -4,5 +4,3 @@ loadtest/results/
 .claude/settings.local.json
 bench/results/*/runs/
 h2/runs/
-docs/deck/node_modules/
-docs/deck/package-lock.json
