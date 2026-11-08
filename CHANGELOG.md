@@ -14,6 +14,8 @@
 
 ### Fixed
 - CI: the MCP selftest expected exactly 25 red-team scenarios; it now checks that the scenarios are listed, unique and complete. CI was red since 1.6.0.
+- CI: `bench run` asked `claude --version` even with the fake executor, so tests/test_bench.py failed on a runner without Claude Code.
+- docs/deck/theme.js writes the .pptx without folder entries, which some cloud viewers refuse.
 
 ## [1.7.0] - 2026-11-08
 
