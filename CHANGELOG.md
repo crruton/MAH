@@ -8,6 +8,7 @@
 ### Changed
 - The kit is named MAH (my automated harness). The GitHub URL stays.
 - The prose does not name the model of the bench runs; the run data keep it.
+- README, PROCESS.md and docs/BENCH.md match the kit: demo 36 attacks and 17 normal actions, 46 bench tasks (24 train, 22 held out), bench cost ~130 rubles for 2 arms × 3 reps, the lean arm, the lean rules as the start of a project AGENTS.md, OpenCode barriers through the plugin, install from a clone on Windows.
 
 ## [1.6.0] - 2026-11-08
 
