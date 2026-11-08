@@ -319,7 +319,9 @@ def run(a) -> int:
                                                  "budget_rub": a.budget_rub, "usd_rub": rate, "rate_source": src,
                                                  "isolated": bool(os.environ.get("ANTHROPIC_API_KEY")) or executor(a.model) == "opencode",
                                                  "executor": executor(a.model),
-                                                 "claude": subprocess.run([shutil.which("claude") or "claude", "--version"], capture_output=True, text=True, encoding="utf-8").stdout.strip(),
+                                                 # no claude on a CI runner with the fake executor: record "" and go on
+                                                 "claude": subprocess.run([shutil.which("claude"), "--version"], capture_output=True, text=True, encoding="utf-8").stdout.strip()
+                                                 if shutil.which("claude") else "",
                                                  "kit_commit": git(KIT, "rev-parse", "--short", "HEAD").stdout.strip()},
                                                 ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")
     print(f"bench: {len(todo)} rollouts, model {a.model}, budget {a.budget_rub} ₽ ({src}), out {out}")
