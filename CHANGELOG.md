@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.7.0] - 2026-11-08
 
 ### Added
 - docs/MAH-HighLoad-2026.pptx: the talk deck after docs/TALK.md, 44 slides with the speaker narration in the slide notes.
