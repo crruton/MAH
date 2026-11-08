@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- docs/MAH-HighLoad-2026.pptx: the talk deck after docs/TALK.md, 44 slides with the speaker narration in the slide notes.
+
+### Changed
+- The kit is named MAH (my automated harness). The GitHub URL stays.
+- The prose does not name the model of the bench runs; the run data keep it.
+
 ## [1.6.0] - 2026-11-08
 
 ### Added
