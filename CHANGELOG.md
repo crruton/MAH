@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.0] - 2026-11-09
+
+### Added
+- B39: a test command in a repository with secret files runs with its output through hooks/mask-output.py, which replaces the values of the secret files and known token formats with `***`. The exit code of the test stays. Also the form `cd DIR && <tests> 2>&1 | tail` (INC-2026-11-09-04). The OpenCode plugin applies the changed command.
+- docs/deck/: the generator of the talk deck (pptxgenjs, pinned versions, own theme step).
+- Demo: attack B39, a second B06 step (config/settings.local.json), a normal read of .claude/settings.local.json. 37 attacks, 18 normal actions.
+
+### Changed
+- B06 also denies config files with passwords: `*.local.json`, `settings.local.*`, `credentials.json`, `secrets.json|yaml|toml`, and sees a backslash before a secret name (INC-2026-11-09-05).
+- INC-2026-11-09-02 closed: in the 924-run bench the lean rules lost work in 0 of 8 runs of q09.
+- docs/TALK.md: the checklist matches the state; README, PROCESS.md: B39 and the demo numbers.
+
+### Fixed
+- CI: the MCP selftest expected exactly 25 red-team scenarios; it now checks that the scenarios are listed, unique and complete. CI was red since 1.6.0.
+- CI: `bench run` asked `claude --version` even with the fake executor, so tests/test_bench.py failed on a runner without Claude Code.
+- docs/deck/theme.js writes the .pptx without folder entries, which some cloud viewers refuse.
+
 ## [1.7.0] - 2026-11-08
 
 ### Added

@@ -38,7 +38,7 @@ jobs:
 
 
   demo:
-    name: 36 attacks stop, 17 normal actions pass
+    name: demo attacks stop, normal actions pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

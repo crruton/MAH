@@ -46,7 +46,7 @@ done
 
 global_install() {
   mkdir -p "$HH/hooks" "$HH/bin" "$HH/errors" "$H/skills"
-  cp "$kit/hooks/guard.sh" "$kit/hooks/collect-tool-errors.sh" "$kit/hooks/session-end.sh" "$kit/hooks/session-start.sh" "$HH/hooks/"
+  cp "$kit/hooks/guard.sh" "$kit/hooks/mask-output.py" "$kit/hooks/collect-tool-errors.sh" "$kit/hooks/session-end.sh" "$kit/hooks/session-start.sh" "$HH/hooks/"
   cp "$kit/gates/collect.py" "$kit/metrics/errors.py" "$kit/metrics/budget.py" "$kit/metrics/dashboard.py" "$HH/bin/"
   chmod +x "$HH"/hooks/*.sh
   touch "$HH/installed-skills.txt"

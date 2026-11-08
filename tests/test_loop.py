@@ -66,6 +66,56 @@ def test_secret_glob_is_denied():  # INC-2026-11-09-01
         assert r.returncode == want, (cmd, r.returncode, r.stderr)
 
 
+def _guard(payload: dict, cwd=None):
+    import json
+    bash = shutil.which("bash") or "bash"
+    return subprocess.run([bash, str(ROOT / "hooks" / "guard.sh")], input=json.dumps(payload), cwd=cwd,
+                          capture_output=True, text=True, encoding="utf-8")
+
+
+def test_secret_config_is_denied():  # INC-2026-11-09-05
+    for tool, key, value, want in (("Read", "file_path", "config/settings.local.json", 2), ("Bash", "command", "cat credentials.json", 2),
+                                   ("Bash", "command", "type config\\secrets.yaml", 2), ("Read", "file_path", ".claude/settings.local.json", 0),
+                                   ("Read", "file_path", "src/settings.json", 0), ("Read", "file_path", "config/settings.local.json.example", 0)):
+        r = _guard({"tool_name": tool, "tool_input": {key: value}})
+        assert r.returncode == want, (value, r.returncode, r.stderr)
+
+
+def test_test_output_is_masked():  # INC-2026-11-09-04
+    import json
+    secret = "bench-api-key-" + "7c21"  # harness:allow-secret: the fake key of bench task q27
+    with tempfile.TemporaryDirectory() as d:
+        subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+        Path(d, "test_x.py").write_text("import sys\nprint({'Authorization': 'Bearer %s'})\nsys.exit(1)\n" % secret, encoding="utf-8", newline="\n")
+        plain = _guard({"tool_name": "Bash", "tool_input": {"command": "python test_x.py"}}, cwd=d)
+        assert plain.returncode == 0 and not plain.stdout.strip(), ("no secret file: the command stays", plain.stdout)
+        Path(d, "api").mkdir()
+        Path(d, "api", ".env").write_text("API_KEY=%s\n" % secret, encoding="utf-8", newline="\n")
+        r = _guard({"tool_name": "Bash", "tool_input": {"command": "python test_x.py", "description": "run"}}, cwd=d)
+        upd = json.loads(r.stdout)["hookSpecificOutput"]["updatedInput"]
+        assert upd["description"] == "run" and "mask-output.py" in upd["command"], upd
+        bash = shutil.which("bash") or "bash"
+        run = subprocess.run([bash, "-c", upd["command"]], cwd=d, capture_output=True, text=True, encoding="utf-8")
+        assert secret not in run.stdout and "Bearer ***" in run.stdout, run.stdout
+        assert run.returncode == 1, ("the exit code of the test stays", run.returncode)
+        # the form agents use in the bench (q27): cd, the runner, 2>&1, a filter, git status. The hook runs elsewhere.
+        agent = f'cd "{Path(d).as_posix()}" && python test_x.py 2>&1 | tail -15; git status --short'
+        r = _guard({"tool_name": "Bash", "tool_input": {"command": agent}}, cwd=tempfile.gettempdir())
+        upd = json.loads(r.stdout)["hookSpecificOutput"]["updatedInput"]
+        run = subprocess.run([bash, "-c", upd["command"]], capture_output=True, text=True, encoding="utf-8")
+        assert secret not in run.stdout and "Bearer ***" in run.stdout, run.stdout
+        joined = f'cd "{Path(d).as_posix()}" && cat test_x.py && echo --- && python test_x.py 2>&1 | tail -20'
+        r = _guard({"tool_name": "Bash", "tool_input": {"command": joined}}, cwd=d)
+        assert "mask-output.py" in r.stdout, ("reads joined with a test run are masked too", joined)
+        joined = f'cd "{Path(d).as_posix()}" && git ls-files && git log --oneline | head -3 && python test_x.py 2>&1 | tail -15'
+        r = _guard({"tool_name": "Bash", "tool_input": {"command": joined}}, cwd=d)
+        assert "mask-output.py" in r.stdout, ("git reads joined with a test run are masked too", joined)
+        for other in ("python test_x.py && rm -rf out", "python test_x.py > out.txt", "python test_x.py $(cat x)",
+                      "find . -name '*.pyc' -delete && pytest", "cat test_x.py", "python app.py"):
+            r = _guard({"tool_name": "Bash", "tool_input": {"command": other}}, cwd=d)
+            assert "updatedInput" not in r.stdout, ("only a test command is changed", other)
+
+
 def test_accepted_incident_needs_a_cause():  # gate B16, status accepted
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "error.md"

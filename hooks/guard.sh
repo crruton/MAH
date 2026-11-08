@@ -10,6 +10,8 @@
 #                   B04 a full test run   B05 git branch -D, DROP/TRUNCATE, docker prune
 #                   B29 curl | sh   B30 publish, deploy, terraform apply, kubectl delete
 #                   B31 env dump    B33 change of hooks and agent settings
+#   mask            B39 a plain test command in a repository with secret files runs with its output
+#                   through mask-output.py (the hook allows it with the changed command)
 #   allow           all other actions, for example rm -rf build, docker compose down -v
 #
 # Speed: one jq call and bash regex. About 70-130 ms on Windows, see ./harness.sh budget.
@@ -30,22 +32,34 @@ log() { # log <barrier> <name> <outcome> <detail>
   done
 }
 deny() { log "$1" "$2" blocked "$4"; echo "Blocked by $2: $3" >&2; exit 2; }
+MASKED=""   # B39: the test command with its output through mask-output.py
+decide() { # decide <ask|allow> <reason>: the hook answer, with the masked command when B39 changed it
+  if [ -n "$MASKED" ]; then
+    jq -cn --arg d "$1" --arg r "$2" --arg c "$MASKED" --argjson ti "$(jq -c '.tool_input // {}' <<< "$input")" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r,updatedInput:($ti + {command:$c})}}'
+  else
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}\n' "$1" "${2//\"/\'}"
+  fi
+}
 ask() {
   log "$1" "$2" asked "$4"
-  local reason=${3//\"/\'}
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s (%s)"}}\n' "$reason" "$2"
+  decide ask "${3//\"/\'} ($2)"
   exit 0
 }
 
-# B06: secret files, by path or inside a command
-SECRET='(^|[[:space:]/"'"'"'=<>])(\.env(\.[A-Za-z0-9_-]+)?|[^[:space:]/"'"'"']*\.(pem|key|p12|pfx|kdbx)|id_rsa|id_ed25519|secrets/[^[:space:]"'"'"']*)([[:space:]"'"'"';|&)*?[]|$)'   # *?[: a glob like .env* (INC-2026-11-09-01)
-ALLOWED='\.env\.(example|sample|template)$'
+# B06: secret files, by path or inside a command. Also config files that hold passwords (INC-2026-11-09-05).
+SECRET='(^|[[:space:]/\\"'"'"'=<>])(\.env(\.[A-Za-z0-9_-]+)?|[^[:space:]/"'"'"']*\.(pem|key|p12|pfx|kdbx)|id_rsa|id_ed25519|secrets/[^[:space:]"'"'"']*'   # harness:allow-secret: a pattern of names, no value
+SECRET+='|[^[:space:]/\\"'"'"']*\.local\.json|settings\.local\.[A-Za-z]+|credentials\.json|secrets\.(json|ya?ml|toml))([[:space:]"'"'"';|&)*?[]|$)'   # *?[: a glob like .env* (INC-2026-11-09-01)
+ALLOWED='\.(example|sample|template)$'
 for target in "$path" "$cmd"; do
   [ -n "$target" ] || continue
   rest=" $target "
   while [[ $rest =~ $SECRET ]]; do
     hit=${BASH_REMATCH[2]}
-    [[ $hit =~ $ALLOWED ]] || deny B06 guard-secrets "$hit is a secret file. Agents do not read or change secrets." "$tool $target"
+    # .claude/settings.local.json is the agent settings file, not a secret: B33 guards it
+    if ! [[ $hit =~ $ALLOWED ]] && ! [[ $hit == settings.local.json && $rest == *".claude/settings.local.json"* ]]; then
+      deny B06 guard-secrets "$hit is a secret file. Agents do not read or change secrets. Run the code that reads it; do not print its values." "$tool $target"
+    fi
     rest=${rest#*"$hit"}
   done
 done
@@ -154,9 +168,49 @@ if [[ $flat =~ $ASK ]]; then
 fi
 shopt -u nocasematch
 
+# B39 mask: a failed test prints what it read, a secret too (INC-2026-11-09-04). B06 cannot see it: the test,
+# not the agent, reads the file. For a plain test command in a repository with secret files, the output goes
+# through mask-output.py, which replaces the secret values with ***. The command changes only when each part
+# (between && || ; |) runs tests or only reads: cd, cat, echo, ls, head, tail, grep, git status|diff|log|show...
+# Agents join these, for example: cd DIR && cat CLAUDE.md && python -m unittest 2>&1 | tail -20.
+# $( , `, a redirect to a file or any other command leaves the command as it is.
+RUNNER='^((npm|pnpm|yarn|bun)( run)? test|npx (jest|vitest|mocha)|jest|vitest|mocha|pytest|python3? -m (pytest|unittest)|python3? [^[:space:]]*test[^[:space:]]*\.py|tox|nox|go test|cargo test|cargo nextest run|(mvn|\./mvnw) (clean )?(test|verify)|(\./)?gradlew? (clean )?(test|check)|dotnet test|(bundle exec )?(rspec|rake test|rails test)|(vendor/bin/)?(phpunit|pest)|mix test|deno test|make (test|check))([[:space:]]|$)'
+READONLY='^(cd|cat|echo|printf|ls|dir|pwd|head|tail|grep|egrep|sort|uniq|wc|find|true|git[[:space:]]+(status|diff|log|show|branch|ls-files|check-ignore|rev-parse|grep|blame))([[:space:]]|$)'
+test_only() { # 0 when the command only runs tests and reads, and runs tests at least once
+  local c=${cmd//2>&1/} seg runs=0
+  [[ $c == *'$('* || $c == *'`'* || $c == *'>'* || $c == *'<'* || $c == *$'\n'* ]] && return 1
+  c=${c//&&/$'\n'}; c=${c//||/$'\n'}; c=${c//;/$'\n'}; c=${c//|/$'\n'}
+  while IFS= read -r seg; do
+    seg="${seg#"${seg%%[![:space:]]*}"}"
+    [ -n "$seg" ] || continue
+    while [[ $seg =~ ^[A-Z_][A-Z0-9_]*=[^[:space:]]*[[:space:]]+(.*)$ ]]; do seg=${BASH_REMATCH[1]}; done
+    if [[ $seg =~ $RUNNER ]]; then runs=1
+    elif ! [[ $seg =~ $READONLY ]] || [[ $seg =~ ^find.*(-delete|-exec) ]]; then return 1
+    fi
+  done <<< "$c"
+  [ $runs = 1 ]
+}
+MASKER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mask-output.py"
+if [ "${HARNESS_MASK:-1}" = "1" ] && test_only && [ -f "$MASKER" ] && py=$(command -v python3 || command -v python); then
+  dir=.
+  if [[ $cmd =~ ^[[:space:]]*cd[[:space:]]+(\"([^\"]*)\"|\'([^\']*)\'|([^[:space:];&|]+)) ]]; then
+    dir="${BASH_REMATCH[2]}${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+  fi
+  root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || (cd "$dir" 2>/dev/null && pwd) || pwd)
+  if [ -n "$(find "$root" -maxdepth 5 \( -name .git -o -name node_modules -o -name .venv -o -name .claude \) -prune -o -type f \
+        \( -name '.env' -o -name '.env.*' -o -name '*.local.json' -o -name 'settings.local.*' -o -name credentials.json -o -name 'secrets.*' -o -path '*/secrets/*' \) \
+        ! -name '*.example' ! -name '*.sample' ! -name '*.template' -print -quit 2>/dev/null)" ]; then
+    MASKED="set -o pipefail; { $cmd ; } 2>&1 | $(printf '%q' "$py") $(printf '%q' "$MASKER") $(printf '%q' "$root")"
+  fi
+fi
+
 # B04 ask: full test suite (each segment of && ; || | chains). CLAUDE_FULL_TESTS=1 allows it.
 if [ "${CLAUDE_FULL_TESTS:-}" != "1" ] && ! [[ $cmd == *CLAUDE_FULL_TESTS=1* ]]; then
   FULL='(^|&&|;|\|\||\|)[[:space:]]*((npm|pnpm|yarn|bun)( run)? test|npx (jest|vitest|mocha)( run)?|(jest|vitest|mocha)( run)?|pytest|python3? -m (pytest|unittest)|tox|nox|go test \./\.\.\.|cargo test|cargo nextest run|(mvn|\./mvnw) (clean )?(test|verify)|(\./)?gradlew? (clean )?(test|check)|dotnet test|(bundle exec )?(rspec|rake test|rails test)|(vendor/bin/|\./vendor/bin/)?(phpunit|pest)|mix test|swift test|flutter test|dart test|deno test|ctest|make (test|check))[[:space:]]*($|&&|;|\|)'
   [[ $cmd =~ $FULL ]] && ask B04 guard-tests "full test suite. Run the tests of the changed files, or confirm the full run" "$cmd"
+fi
+if [ -n "$MASKED" ]; then
+  # no log: a masked test run is normal work, not an attempt, and must not count in the dashboard
+  decide allow "B39 guard-mask: the test output goes through a filter that hides the values of the secret files"
 fi
 exit 0
